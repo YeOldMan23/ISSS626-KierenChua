@@ -8,7 +8,10 @@ website:
       - href: index.qmd
         text: Home
       - about.qmd
-
+      - text: Hands On Exercises
+        menu:
+          - text: Exercise 1
+            href: HandsonEx/HandsonEx01/HandsonEx01.qmd
 format:
   html:
     theme: cosmo
