@@ -9,11 +9,53 @@ execute:
     message: false # don't see the warnings
     freeze: true # Prevent re-render
 ---
+
 <!-- Remember to copy pase this on every page -->
 
 ```{r}
-pacman::p_load("sf", "tidyverse", "tmap")
+pacman::p_load("sf", "tidyverse", "tmap", "ggstatplot")
 ```
 
 ```{r}
+# Load in the new data  (both versions)
+shp_data <- st_read(dsn = "data", layer = "MP14_SUBZONE_WEB_PL")
+
+# View the class data
+class(shp_data)
+View(shp_data) # Hidden since message: false
 ```
+
+## Basic Spatial Models
+1. Vector - Points / Lines / Polygons
+- Points (x, y) POINT
+- Line String ((x1, y1), (x2, y2) ...) LINESTRING
+- Polygon ((x1, y1, x2, y2 ... x1, y1)) POLYGON<!--  Always ends on the first point -->
+# ! Also has mutiple version
+
+```{r}
+# Export back to KML, because  the OG KML file is corrupted 
+st_write(shp_data, "data/MP14_SUBZONE_WEB_PL.kml", delete_dsn = TRUE) # Delete existing files, similar to shutil
+```
+
+```{r}
+# Load in the subzone data for 2019
+mpsz19_kml <- st_read("data/MasterPlan2019SubzoneBoundaryNoSeaKML.kml")
+# Note that KML very untidy, Shape data is usually better
+View(mpsz19_kml)
+```
+
+## Coordinate Systems and Map Projects
+This Coordinate systems are important since they tell us how the data is represented and more importantly, their units. Commonly represented projectsion systems can be found [here](https://epsg.io/). _Note : Singapore uses SVY21_
+
+### Transformation
+Transforms coordinate systems from 1 projection to another, useful for different countries / systems.
+```{r}
+# Nest several arguments with %>% transfer the output of one file to the next function
+mpsz19_shp <- st_read(dsn = "data/", layer = "MPSZ-2019") %>% st_transform(crs=3414) # Similar to Ubuntu > to copy the output of error files to text files for logging
+```
+
+
+### Location of Statistics Information
+Popular data sites, can extract data here
+[data.gov](https://data.gov.sg/)
+[SingStat](https://www.singstat.gov.sg/)
