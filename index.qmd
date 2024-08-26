@@ -1,10 +1,17 @@
 ---
 title: "ISSS626-Kieren Chua"
+author: "Kieren Chua"
+date: "August 20 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
 ---
 
-This is a Quarto website.
+This is Kieren Chua's ISSS626 Module Home page
 
-To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
 
 ```{r}
 1 + 1
