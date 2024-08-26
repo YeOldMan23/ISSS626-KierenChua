@@ -26,11 +26,12 @@ View(shp_data) # Hidden since message: false
 ```
 
 ## Basic Spatial Models
-1. Vector - Points / Lines / Polygons
-- Points (x, y) POINT
-- Line String ((x1, y1), (x2, y2) ...) LINESTRING
-- Polygon ((x1, y1, x2, y2 ... x1, y1)) POLYGON<!--  Always ends on the first point -->
-# ! Also has mutiple version
+
+1.  Vector - Points / Lines / Polygons
+
+-   Points (x, y) POINT
+-   Line String ((x1, y1), (x2, y2) ...) LINESTRING
+-   Polygon ((x1, y1, x2, y2 ... x1, y1)) POLYGON<!--  Always ends on the first point --> \# ! Also has mutiple version
 
 ```{r}
 # Export back to KML, because  the OG KML file is corrupted 
@@ -45,17 +46,30 @@ View(mpsz19_kml)
 ```
 
 ## Coordinate Systems and Map Projects
-This Coordinate systems are important since they tell us how the data is represented and more importantly, their units. Commonly represented projectsion systems can be found [here](https://epsg.io/). _Note : Singapore uses SVY21_
+
+This Coordinate systems are important since they tell us how the data is represented and more importantly, their units. Commonly represented projectsion systems can be found [here](https://epsg.io/). *Note : Singapore uses SVY21*
 
 ### Transformation
+
 Transforms coordinate systems from 1 projection to another, useful for different countries / systems.
+
 ```{r}
 # Nest several arguments with %>% transfer the output of one file to the next function
 mpsz19_shp <- st_read(dsn = "data/", layer = "MPSZ-2019") %>% st_transform(crs=3414) # Similar to Ubuntu > to copy the output of error files to text files for logging
 ```
 
+### Amendment 
+
+```{r}
+# Draw in the singaporean data
+popdata <- read_csv("data/respopagesextod2011to2020.csv")
+
+# Then filter by age and sex?
+
+```
 
 ### Location of Statistics Information
-Popular data sites, can extract data here
-[data.gov](https://data.gov.sg/)
-[SingStat](https://www.singstat.gov.sg/)
+
+Popular data sites, can extract data here 
+- [data.gov](https://data.gov.sg/) 
+- [SingStat](https://www.singstat.gov.sg/)
