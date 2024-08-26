@@ -12,6 +12,10 @@ website:
         menu:
           - text: Exercise 1
             href: HandsonEx/HandsonEx01/HandsonEx01.qmd
+      - text: In Class Exercise
+        menu:
+          - text: In Class Exercise 1
+            href: InClassEx/InClassEx01/InClassEx01.qmd
 format:
   html:
     theme: cosmo
