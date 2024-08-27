@@ -92,7 +92,7 @@ ggscatterstats(data = mpsz19_shp_df,
                type = "parametric")
 ```
 
-### Working with population Data
+## Working with population Data
 
 ```{r}
 popdata <- read_csv("data/respopagesextod2023.csv")
@@ -191,7 +191,8 @@ percentmap <- function(vnam, df, legtitle=NA, mtitle="Percentile Map"){
 
 percentmap("DEPENDENCY", mpsz_pop2023)
 ```
-### BoxMap
+
+## BoxMap
 
 ```{r}
 ggplot(data = mpsz_pop2023,
@@ -260,6 +261,6 @@ tmap_mode("view")
 boxmap("DEPENDENCY", mpsz_pop2023)
 ```
 
-### Location of Statistics Information
+## Location of Statistics Information
 
 Popular data sites, can extract data here - [data.gov](https://data.gov.sg/) - [SingStat](https://www.singstat.gov.sg/)
