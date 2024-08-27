@@ -135,6 +135,7 @@ popdata2020 <- popdata2020 %>%
 ```
 
 Writing R Data source for amended data
+
 ```{r}
 popdata2020 <- popdata2020 %>%
   mutate_at(.vars = vars(PA, SZ), 
@@ -147,6 +148,7 @@ write_rds(mpsz_pop2020, "data/mpszpop2020.rds")
 ```
 
 Colour Coded Map
+
 ```{r}
 tmap_mode("plot")
 qtm(mpsz_pop2020, 
@@ -154,6 +156,7 @@ qtm(mpsz_pop2020,
 ```
 
 Base Map with Legends
+
 ```{r}
 tm_shape(mpsz_pop2020)+
   tm_fill("DEPENDENCY", 
@@ -175,12 +178,14 @@ tm_shape(mpsz_pop2020)+
 ```
 
 Base Map
+
 ```{r}
 tm_shape(mpsz_pop2020) +
   tm_polygons()
 ```
 
 Different Map Formats and their seperate data splits
+
 ```{r}
 tm_shape(mpsz_pop2020)+
   tm_polygons("DEPENDENCY")
@@ -202,6 +207,7 @@ tm_shape(mpsz_pop2020)+
 ```
 
 Custom Breaks
+
 ```{r}
 summary(mpsz_pop2020$DEPENDENCY)
 tm_shape(mpsz_pop2020)+
@@ -211,6 +217,7 @@ tm_shape(mpsz_pop2020)+
 ```
 
 Custom Colors
+
 ```{r}
 tm_shape(mpsz_pop2020)+
   tm_fill("DEPENDENCY",
@@ -226,6 +233,7 @@ tm_shape(mpsz_pop2020)+
 ```
 
 Legends
+
 ```{r}
 tm_shape(mpsz_pop2020)+
   tm_fill("DEPENDENCY", 
@@ -246,6 +254,7 @@ tm_shape(mpsz_pop2020)+
 ```
 
 Styles
+
 ```{r}
 tm_shape(mpsz_pop2020)+
   tm_fill("DEPENDENCY", 
@@ -276,6 +285,7 @@ tmap_style("white")
 ```
 
 Multiple Graphs
+
 ```{r}
 tm_shape(mpsz_pop2020)+
   tm_fill(c("YOUNG", "AGED"),
