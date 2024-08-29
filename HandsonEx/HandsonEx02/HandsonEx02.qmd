@@ -1,0 +1,139 @@
+---
+title: "Hands on Exercise 2"
+author: "Kieren Chua"
+date: "August 28 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+# Part 1: *Spatial Point Analysis **
+Here we are trying to find out if there are any childcare center cluster and if so, where are they?
+
+```{r}
+pacman::p_load(sf, raster, spatstat, tmap, tidyverse)
+```
+
+Load in the childcare data
+```{r}
+childcare_sf <- st_read("data/child-care-services-geojson.geojson") %>% st_transform(crs=3414)
+sg_sf <- st_read("data/", layer="CostalOutline")  %>% st_transform(crs=3414)
+mpsz_sf <- st_read("data/", layer="MP14_SUBZONE_WEB_PL") %>% st_transform(crs=3414)
+
+colnames(childcare_sf)
+colnames(mpsz_sf)
+```
+
+## Hands on - Make the point map
+```{r}
+# Plot the childcare map
+tm_shape(mpsz_sf) + tm_polygons() + tm_shape(childcare_sf) + tm_dots(col="black", size=0.05)
+```
+```{r}
+# Pin Map
+tmap_mode('view')
+tm_shape(childcare_sf)+
+  tm_dots()
+tmap_mode('plot')
+```
+
+# Part 2 : *Geo-spatial Data Wrangling*
+```{r}
+# Convert to Spatial Data
+childcare <- as_Spatial(childcare_sf)
+mpsz <- as_Spatial(mpsz_sf)
+sg <- as_Spatial(sg_sf)
+```
+
+
+Display their information
+```{r}
+childcare
+```
+```{r}
+mpsz
+```
+```{r}
+sg
+```
+## Convert to SP format
+```{r}
+childcare_sp <- as(childcare, "SpatialPoints")
+sg_sp <- as(sg, "SpatialPolygons")
+```
+
+```{r}
+childcare_sp
+```
+
+```{r}
+sg_sp
+```
+** The difference between Spatial Polygons and Points is the nature of the data, where polygons represent polygons and point is point data. For SpatialPolygonsDataFrame and SpatialPolgons, the one without dataframe just contains the geometric info, while the dataframe contains the data for each polygon **
+
+## Convert to spatstat format
+
+```{r}
+childcare_ppp <- as.ppp(childcare_sf)
+childcare_ppp
+plot(childcare_ppp)
+```
+
+```{r}
+summary(childcare_ppp)
+```
+## Checking for duplication and coincidence
+
+```{r}
+# Make new dataframe to check
+any(duplicated(cbind(childcare_ppp$x, childcare_ppp$y)))
+sum(multiplicity(cbind(childcare_ppp$x, childcare_ppp$y)) > 1)
+```
+** Note : Trick Question, 128 duplicates shown **
+
+```{r}
+# Visualize the map
+tmap_mode('view')
+tm_shape(childcare) +
+  tm_dots(alpha=0.4, 
+          size=0.05)
+tmap_mode('plot')
+```
+
+** To find duplicates, find points that are of darker shade than the others, since the alpha made the opacity of the points higher, duplicate points where the points directly overlay each other should be darker **
+
+## Jittering Approach
+
+```{r}
+childcare_ppp_jit <- rjitter(childcare_ppp, 
+                             retry=TRUE, 
+                             nsim=1, 
+                             drop=TRUE)
+any(duplicated(cbind(childcare_ppp_jit$x, childcare_ppp_jit$y)))
+```
+
+## Creating owin object
+
+```{r}
+sg_owin <- as.owin(sg_sf)
+plot(sg_owin)
+```
+```{r}
+summary(sg_owin)
+```
+```{r}
+childcareSG_ppp = childcare_ppp[sg_owin]
+```
+```{r}
+summary(childcareSG_ppp)
+```
+Plot the new graph below
+
+```{r}
+plot(sg_owin, main="childcareSG_ppp")
+plot(childcare_ppp, add=TRUE)
+```
+

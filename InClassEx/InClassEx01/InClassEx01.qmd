@@ -158,7 +158,6 @@ tm_shape(mpsz_pop2023)+
              position = c("left", "bottom"))
 ```
 
-
 ```{r}
 # Drop NA
 mpsz_pop2023 <- mpsz_pop2023 %>% drop_na()
