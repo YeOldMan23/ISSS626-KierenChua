@@ -1,0 +1,22 @@
+---
+title: "Hands on Exercise 2, Part 1"
+author: "Kieren Chua"
+date: "August 28 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+
+```{r}
+pacman::p_load(sf, raster, spatstat, tmap, tidyverse)
+```
+
+
+```{r}
+childcare_sf <- st_read("data/child-care-services-geojson.geojson") %>%
+  st_transform(crs = 3414)
+```
