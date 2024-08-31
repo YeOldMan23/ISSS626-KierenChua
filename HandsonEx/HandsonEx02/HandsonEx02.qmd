@@ -10,7 +10,7 @@ execute:
     freeze: true # Prevent re-render
 ---
 
-# Part 1: *Spatial Point Analysis **
+# Part 1: **Spatial Point Analysis**
 Here we are trying to find out if there are any childcare center cluster and if so, where are they?
 
 ```{r}
@@ -40,7 +40,7 @@ tm_shape(childcare_sf)+
 tmap_mode('plot')
 ```
 
-# Part 2 : *Geo-spatial Data Wrangling*
+# Part 2 : **Geo-spatial Data Wrangling**
 ```{r}
 # Convert to Spatial Data
 childcare <- as_Spatial(childcare_sf)
@@ -141,7 +141,7 @@ plot(sg_owin, add=TRUE)
 summary(childcare_ppp)
 ```
 
-# Part 3:  First-order Spatial Point Patterns Analysis
+# Part 3:  **First-order Spatial Point Patterns Analysis**
 
 ```{r}
 kde_childcareSG_bw <- density(childcareSG_ppp,
@@ -209,7 +209,7 @@ plot(density(childcareSG_ppp.km,
 ```
 
 
-# Part 4 : Fixed and Adaptive KDE
+# Part 4 : **Fixed and Adaptive KDE**
 
 ```{r}
 kde_childcareSG_600 <- density(childcareSG_ppp.km, sigma=0.6, edge=TRUE, kernel="gaussian")
@@ -347,7 +347,7 @@ plot(density(childcare_tm_ppp.km,
      main="Tampines")
 ```
 
-# Part 5 : Nearest Neighbour Analysis
+# Part 5 : **Nearest Neighbour Analysis**
 
 ```{r}
 clarkevans.test(childcareSG_ppp,

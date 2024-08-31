@@ -15,7 +15,7 @@ website:
           - text: Exercise 2, Part 1
             href: HandsonEx/HandsonEx02/HandsonEx02.qmd
           - text: Exercise 2, Part 2
-            href: HandsonEx/HandsonEx02/HandsonEx02_02.qmd
+            href: HandsonEx/HandsonEx02/HandsonEx02_2.qmd
       - text: In Class Exercise
         menu:
           - text: In Class Exercise 1

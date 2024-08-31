@@ -2,7 +2,7 @@
   "hash": "8c48317be2a25dc4948c7d960f8037bb",
   "result": {
     "engine": "knitr",
-    "markdown": "---\ntitle: \"ISSS626-Kieren Chua\"\nauthor: \"Kieren Chua\"\ndate: \"August 20 2024\"\ndate-modified: \"last-modified\"\nexecute: \n    eval: true # evaulate the code first\n    echo: true # See the code output\n    message: false # don't see the warnings\n    freeze: true # Prevent re-render\n---\n\n\n\n\n\nThis is Kieren Chua's ISSS626 Module Home page\n\n\n\n\n\n\n::: {.cell}\n\n```{.r .cell-code}\n1 + 1\n```\n\n::: {.cell-output .cell-output-stdout}\n\n```\n[1] 2\n```\n\n\n:::\n:::\n",
+    "markdown": "---\ntitle: \"ISSS626-Kieren Chua\"\nauthor: \"Kieren Chua\"\ndate: \"August 20 2024\"\ndate-modified: \"last-modified\"\nexecute: \n    eval: true # evaulate the code first\n    echo: true # See the code output\n    message: false # don't see the warnings\n    freeze: true # Prevent re-render\n---\n\n\nThis is Kieren Chua's ISSS626 Module Home page\n\n\n\n::: {.cell}\n\n```{.r .cell-code}\n1 + 1\n```\n\n::: {.cell-output .cell-output-stdout}\n\n```\n[1] 2\n```\n\n\n:::\n:::\n",
     "supporting": [],
     "filters": [
       "rmarkdown/pagebreak.lua"
