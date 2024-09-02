@@ -1,0 +1,15 @@
+---
+title: "Take Home Exercise 1"
+author: "Kieren Chua"
+date: "August 26 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+```{r}
+pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot")
+```
