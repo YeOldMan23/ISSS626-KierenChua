@@ -10,6 +10,24 @@ execute:
     freeze: true # Prevent re-render
 ---
 
+# Take Home Exercise 1
+
+## Part 1 : Reading the Data 
 ```{r}
 pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot")
 ```
+
+Import the road accident data
+```{r}
+rdacc_sf <- read_csv("data/thai_road_accident_2019_2022.csv") %>% # Read the data
+    filter(!is.na(longitude) & longitude != "", !is.na(latitude) & latitude != "") %>% # Filter for N.A. and empty values
+    st_as_sf(coords = c("longitude", "latitude"), crs=4326) %>% # Convert to SF format
+    st_transform(crs = 32647) # Convert to the correct format
+```
+
+View the data, check for data loss **NO MORE THAN 25%**
+```{r}
+
+```
+
+Convert to tibbler dataframe

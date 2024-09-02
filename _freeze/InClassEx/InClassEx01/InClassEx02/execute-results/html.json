@@ -1,0 +1,15 @@
+{
+  "hash": "32b9a8de62bf42668d06e4d957e6f2b9",
+  "result": {
+    "engine": "knitr",
+    "markdown": "---\ntitle: \"In Class Exercise 2\"\nauthor: \"Kieren Chua\"\ndate: \"August 26 2024\"\ndate-modified: \"last-modified\"\nexecute: \n    eval: true # evaulate the code first\n    echo: true # See the code output\n    message: false # don't see the warnings\n    freeze: true # Prevent re-render\n---\n\n::: {.cell}\n\n```{.r .cell-code}\npacman::p_load(\"sf\", \"tidyverse\", \"tmap\", \"ggstatsplot\")\n```\n:::",
+    "supporting": [],
+    "filters": [
+      "rmarkdown/pagebreak.lua"
+    ],
+    "includes": {},
+    "engineDependencies": {},
+    "preserve": {},
+    "postProcess": true
+  }
+}
