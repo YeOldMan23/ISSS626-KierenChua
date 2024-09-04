@@ -27,7 +27,29 @@ rdacc_sf <- read_csv("data/thai_road_accident_2019_2022.csv") %>% # Read the dat
 
 View the data, check for data loss **NO MORE THAN 25%**
 ```{r}
+rdacc_df <- as.data.frame(rdacc_sf)
+colnames(rdacc_df)
+```
 
+Read the road data
+
+```{r}
+thai_roadlines <- st_read(dsn = "data", layer = "hotosm_tha_roads_lines_shp") %>% st_transform(crs = 32647)
+plot(thai_roadlines)
+``` 
+
+We are only interested in the Thai Metro Area, so need to read the boundaries from the boundary data and filter there
+
+```{r}
+# Read from the province layer, contains only
+    # Bangkok
+    # Nonthaburi
+    # Nakhon Pathom
+    # Pathum Thani
+    # Samut Prakan
+    # Samut Sakhon
+thai_boundaries <- st_read(dsn = "data", layer = "tha_admbnda_adm1_rtsd_20220121") %>% st_transform(crs = 32647)
+colnames(thai_boundaries)
 ```
 
 Convert to tibbler dataframe
