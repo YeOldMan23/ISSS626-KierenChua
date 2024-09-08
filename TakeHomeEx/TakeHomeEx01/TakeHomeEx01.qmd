@@ -12,12 +12,14 @@ execute:
 
 # Take Home Exercise 1
 
-## Part 1 : Reading the Data 
+## Part 1 : Reading the Data
+
 ```{r}
 pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot")
 ```
 
 Import the road accident data
+
 ```{r}
 rdacc_sf <- read_csv("data/thai_road_accident_2019_2022.csv") %>% # Read the data
     filter(!is.na(longitude) & longitude != "", !is.na(latitude) & latitude != "") %>% # Filter for N.A. and empty values
@@ -26,6 +28,34 @@ rdacc_sf <- read_csv("data/thai_road_accident_2019_2022.csv") %>% # Read the dat
 ```
 
 View the data, check for data loss **NO MORE THAN 25%**
+
+```{r}
+# Change to dataframe, check col names 
+rdacc_df <- as.data.frame(rdacc_sf)
+colnames(rdacc_df)
+```
+
+```{r}
+# Inspect data
+
+# Get descriptions on types of data types
+print('presumed_cause')
+unique(rdacc_df$presumed_cause)
+
+print('number_of_fatalities')
+unique(rdacc_df$number_of_fatalities)
+
+print('weather_condition')
+unique(rdacc_df$road_description)
+
+print('weather_condition')
+unique(rdacc_df$weather_condition)
+
+print('vehicle_type')
+unique(rdacc_df$vehicle_type)
+```
+May need to bin certain data into smaller bits so as to draw conclusions
+
 ```{r}
 rdacc_df <- as.data.frame(rdacc_sf)
 colnames(rdacc_df)
@@ -34,14 +64,14 @@ colnames(rdacc_df)
 Read the road data
 
 ```{r}
-thai_roadlines <- st_read(dsn = "data", layer = "hotosm_tha_roads_lines_shp") %>% st_transform(crs = 32647)
-plot(thai_roadlines)
+thai_rl_sf <- st_read(dsn = "data", layer = "hotosm_tha_roads_lines_shp") %>% st_transform(crs = 32647)
+
 ``` 
 
 We are only interested in the Thai Metro Area, so need to read the boundaries from the boundary data and filter there
 
 ```{r}
-# Read from the province layer, contains only
+# Read from the province layer, note that the Thai Metro area contains only
     # Bangkok
     # Nonthaburi
     # Nakhon Pathom
@@ -49,7 +79,18 @@ We are only interested in the Thai Metro Area, so need to read the boundaries fr
     # Samut Prakan
     # Samut Sakhon
 thai_boundaries <- st_read(dsn = "data", layer = "tha_admbnda_adm1_rtsd_20220121") %>% st_transform(crs = 32647)
-colnames(thai_boundaries)
+
 ```
+## Part 2 : Initial Plot
+We can plot the data so that we can see any kernel clusters
+
+```{r}
+# Road accident Data
+plot(rdacc_sf)
+plot(thai_roadlines)
+```
+
+
+
 
 Convert to tibbler dataframe

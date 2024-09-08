@@ -12,8 +12,6 @@ execute:
 
 This is Kieren Chua's ISSS626 Module Home page
 
-
 ```{r}
 1 + 1
 ```
-
