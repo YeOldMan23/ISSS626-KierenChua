@@ -18,6 +18,8 @@ website:
             href: HandsonEx/HandsonEx02/HandsonEx02_2.qmd
           - text: Exercise 3
             href: HandsonEx/HandsonEx03/HandsOnEx03.qmd
+          - text: Exercise 4
+            href: HandsonEx/HandsonEx04/HandsonEx04.qmd
       - text: In Class Exercise
         menu:
           - text: In Class Exercise 1
