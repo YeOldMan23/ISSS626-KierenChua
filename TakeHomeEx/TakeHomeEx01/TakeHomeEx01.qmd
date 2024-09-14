@@ -22,9 +22,13 @@ Import the road accident data
 
 ```{r}
 rdacc_sf <- read_csv("data/thai_road_accident_2019_2022.csv") %>% # Read the data
+    mutate(Month = month(incident_datetime, label=TRUE)) %>% # Get month, set the date as factor by number
+    mutate(dayofweek = day(incident_datetime)) %>% # Day of the week 
+    mutate(Month_fac = month(incident_datetime, label = FALSE)) %>% # Sort by Factor setting label = FALSE
     filter(!is.na(longitude) & longitude != "", !is.na(latitude) & latitude != "") %>% # Filter for N.A. and empty values
     st_as_sf(coords = c("longitude", "latitude"), crs=4326) %>% # Convert to SF format
     st_transform(crs = 32647) # Convert to the correct format
+# Use 32647 Format because the metro area is here
 ```
 
 View the data, check for data loss **NO MORE THAN 25%**
@@ -33,6 +37,7 @@ View the data, check for data loss **NO MORE THAN 25%**
 # Change to dataframe, check col names 
 rdacc_df <- as.data.frame(rdacc_sf)
 colnames(rdacc_df)
+rdacc_sf
 ```
 
 ```{r}
@@ -64,8 +69,9 @@ colnames(rdacc_df)
 Read the road data
 
 ```{r}
-thai_rl_sf <- st_read(dsn = "data", layer = "hotosm_tha_roads_lines_shp") %>% st_transform(crs = 32647)
-
+thai_rl_sf <- st_read(dsn = "data", layer = "hotosm_tha_roads_lines_shp") %>% st_set_crs(32647)
+# label as 4326, transfrom to 32647 same as above  
+thai_rl_sf
 ``` 
 
 We are only interested in the Thai Metro Area, so need to read the boundaries from the boundary data and filter there
@@ -86,11 +92,19 @@ We can plot the data so that we can see any kernel clusters
 
 ```{r}
 # Road accident Data
-plot(rdacc_sf)
-plot(thai_roadlines)
+# plot(rdacc_sf)
+# plot(thai_rl_sf)
 ```
 
 
+```{r}
+# Filter the 2nd part too
+# write_rds({SHAPE FILE}, "data/rds/{SHAPE_FILE}.rds")
+```
 
+```{r}
+# To read the file
+# SHAPE_NAME <- read_rds("data/rds/{SHAPE_FILE}.rds")
+```
 
 Convert to tibbler dataframe

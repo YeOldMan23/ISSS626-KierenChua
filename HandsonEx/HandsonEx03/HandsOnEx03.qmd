@@ -24,6 +24,9 @@ network <- st_read(dsn="data",
                    layer="Punggol_St")
 childcare <- st_read(dsn="data",
                      layer="Punggol_CC")
+
+# Can try to remove/add z value e.g.
+# network <- st_zm(network, drop=TRUE, what="ZM")
 ```
 
 ## Part 2 : Visualize the Data
@@ -50,24 +53,22 @@ plot(childcare,add=T,col='red',pch = 19)
 ```{r}
 tmap_mode('view')
 tm_shape(childcare) + 
-  tm_dots() + 
+  tm_dots(col = "red") + 
   tm_shape(network) +
   tm_lines()
 tmap_mode('plot')
 ```
 
-
-```{r}
-
-```
-
-
 ## Network KDE (NKDE) Analysis
 
+Need to lixelize where you convert the lines to set of pixels so that you can convert a road segment into line of points. This is so that can remove short roads
 ```{r}
+# Length of lixel -> 700 (Search Radius)
+# Minimum length of lixel -> 350 (Minimum required distance)
+# Cut the lines of a feature collection of linestrings into lixels with a specified minimal distance may fail if the line geometries are self intersecting
 lixels <- lixelize_lines(network, 
                          700, 
-                         mindist = 375)
+                         mindist = 350)
 ```
 
 ```{r}
@@ -119,18 +120,23 @@ tmap_mode('plot')
 ## Part 3 : Network Constrained G- and K-Function Analysis
 
 ```{r}
+# Returns both the K-function and the G-function
 kfun_childcare <- kfunctions(network, 
                              childcare,
                              start = 0, 
                              end = 1000, 
                              step = 50, 
                              width = 50, 
-                             nsim = 50, 
+                             nsim = 49, 
                              resolution = 50,
                              verbose = FALSE, 
                              conf_int = 0.05)
 ```
 
+Shaded area is Complete Spatial Randomness, if outside then there is sign of regularity
+
 ```{r}
+# Plot both the K function and G function
 kfun_childcare$plotk
+kfun_childcare$plotg
 ```
