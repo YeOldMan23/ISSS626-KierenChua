@@ -59,6 +59,7 @@ unique(rdacc_df$weather_condition)
 print('vehicle_type')
 unique(rdacc_df$vehicle_type)
 ```
+
 May need to bin certain data into smaller bits so as to draw conclusions
 
 ```{r}
@@ -69,10 +70,11 @@ colnames(rdacc_df)
 Read the road data
 
 ```{r}
-thai_rl_sf <- st_read(dsn = "data", layer = "hotosm_tha_roads_lines_shp") %>% st_set_crs(32647)
-# label as 4326, transfrom to 32647 same as above  
+thai_rl_sf <- st_read(dsn = "data", layer = "hotosm_tha_roads_lines_shp") %>%
+              st_set_crs(4326) %>%
+              st_transform(crs = 32647)
 thai_rl_sf
-``` 
+```
 
 We are only interested in the Thai Metro Area, so need to read the boundaries from the boundary data and filter there
 
@@ -87,15 +89,132 @@ We are only interested in the Thai Metro Area, so need to read the boundaries fr
 thai_boundaries <- st_read(dsn = "data", layer = "tha_admbnda_adm1_rtsd_20220121") %>% st_transform(crs = 32647)
 
 ```
-## Part 2 : Initial Plot
-We can plot the data so that we can see any kernel clusters
+
+## Part 2 : Split by location
+
+Since the regions only contains the said regions, we can split it down to the regions for better data processing speed. Said locations are
+
+1)  Bangkok
+2)  Nonthaburi
+3)  Nakhon Pathom
+4)  Pathum Thani
+5)  Samut Prakan
+6)  Samut Sakhon
 
 ```{r}
-# Road accident Data
-# plot(rdacc_sf)
-# plot(thai_rl_sf)
+# Filter the thai boundaries by said locations
+selected_location_list <- c('Bangkok', 'Nonthaburi', 'Nakhon Pathom', 'Pathum Thani', 'Samut Prakan', 'Samut Sakhon')
+selected_thai_boundaries <- thai_boundaries[thai_boundaries$ADM1_EN %in% selected_location_list,]
+plot(selected_thai_boundaries)
+```
+Make sure that the other locations are also confined to the selected locations
+
+```{r}
+combined_geometry <- st_union(selected_thai_boundaries)
+print(combined_geometry)
+plot(combined_geometry)
 ```
 
+
+```{r}
+# Filter by this combined geometry
+contains_combined <- st_within(rdacc_sf, combined_geometry, sparse = FALSE)
+contains_combined <- sapply(1:nrow(rdacc_sf), function(i) {
+  any(contains_combined[[i]])
+})
+filtered_rdacc_sf <- rdacc_sf[contains_combined, ]
+plot(filtered_rdacc_sf)
+```
+We can see that there is a cluster in the reporting datetime and the incident datetime.
+But since the report and incident datetime is so similar there could be a relation.
+There seems to be also a cluster in presumed cause in roughly the same area.
+
+```{r}
+# Now filter the roadlines as well
+# Cut down thai_rl_sf to be smaller for easier processing remove unecesarry columns
+# Smoothness infer from surface, source, width, oneway,layer
+
+cut_rl_sf <- thai_rl_sf %>% select(-surface, -source, 
+                                   -name, -name_en, -name_th,
+                                   -width, -oneway, -layer,
+                                   -osm_id, -osm_type)
+
+# Drop Rows with special names that do not concern us,
+# Only include Roads and link roads
+cut_rl_sf <- cut_rl_sf %>% filter(highway %in% c("motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "service", "motorway_link", "trunk_link", "primary_link", "secondary_link", "motorway_junction"))
+
+# Make new geometry, centerpoint of road so that comparison for st_within is easier later
+# Dont have to compare all points in mutli-line, just see the center
+cut_rl_sf$centroid <- st_centroid(cut_rl_sf$geometry)
+
+plot(st_geometry(cut_rl_sf$centroid))
+```
+
+
+
+```{r}
+# Filter for geometry
+contains_rl <- st_within(cut_rl_sf$centroid, combined_geometry, sparse = FALSE, prepared=TRUE)
+contains_rl <- sapply(1:nrow(cut_rl_sf), function(i) {
+  any(contains_rl[[i]])
+})
+filtered_thai_rl_sf <- cut_rl_sf[contains_rl, ]
+plot(filtered_thai_rl_sf$centroid)
+```
+## Part 3 : Saving the Smaller Files
+
+The roadlines data is ver big, so saving to a smaller size file as a .rds file is advised
+
+```{r}
+write_rds(filtered_thai_rl_sf, file='data/clean_data/filtered_thai_rl_sf.rds')
+write_rds(filtered_rdacc_sf, file='data/clean_data/filtered_rdacc_sf.rds')
+write_rds(selected_thai_boundaries, file='data/clean_data/selected_thai_boundaries.rds')
+```
+
+## Part 4 : Read the new file
+
+Now we can try to read the files again so that we can access the new data
+This also gives us an estimate of how long it will take to process the data
+
+```{r}
+filtered_thai_rl_sf <- readRDS('data/clean_data/filtered_thai_rl_sf.rds')
+filtered_rdacc_sf <- readRDS('data/clean_data/filtered_rdacc_sf.rds')
+
+# Drop the centroid
+filtered_thai_rl_sf <- filtered_thai_rl_sf %>% select(-centroid)
+
+# Find All Roads that have no accidents nearby
+distance_matrix <- st_distance(filtered_thai_rl_sf, filtered_rdacc_sf)
+min_distances <- apply(distance_matrix, 1, min)
+
+# If there are no accidents within 2km of the road, discard the road row
+filtered_thai_rl_sf <- filtered_thai_rl_sf[min_distances <= 2, ]
+
+plot(filtered_thai_rl_sf)
+plot(filtered_rdacc_sf, add=TRUE, col='red')
+```
+
+## Part 4 : Plot all graphs together for visual prelimnary analysis'
+
+The plots are too big, split up by district
+
+```{r}
+tm_shape(lixels)+
+  tm_lines(col="density")+
+```
+
+```{r}
+# There is still too much road data, remove all data where accidents dont occur nearby
+
+```
+
+## Part 5 : Kernel Analysis based off characteristics
+
+Maybe can find kernels based off characteristics of the road. Typical 
+
+```{r}
+
+```
 
 ```{r}
 # Filter the 2nd part too
@@ -107,4 +226,3 @@ We can plot the data so that we can see any kernel clusters
 # SHAPE_NAME <- read_rds("data/rds/{SHAPE_FILE}.rds")
 ```
 
-Convert to tibbler dataframe
