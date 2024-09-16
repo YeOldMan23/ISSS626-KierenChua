@@ -1,0 +1,155 @@
+---
+title: "In Class Exercise 4 - Geographically Weighted Summary Statistics - gwModel Methods"
+author: "Kieren Chua"
+date: "September 16 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+# Part 1 : Import files and Read from the Data
+```{r}
+pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot", "GWmodel", "knitr")
+```
+
+```{r}
+# Read the dataset and combine the data
+hunan_sf <- st_read(dsn = "data/geospatial", 
+                 layer = "Hunan")
+hunan2012 <- read_csv("data/aspatial/Hunan_2012.csv")
+```
+Need to identify by common field name, in this case is County, will need to find common identifier
+
+```{r}
+# Left join, will be automatic since
+hunan_sf <- left_join(hunan_sf,hunan2012)%>%
+  select(1:3, 7, 15, 16, 31, 32)
+
+hunan_sf
+```
+
+```{r}
+# Convert to Spatial Object
+hunan_sp <- hunan_sf %>% as_Spatial()
+hunan_sp
+```
+
+# Part 2 : Find the adaptive bandwidth
+
+## Adaptive Kernel
+
+```{r}
+# Calculate based on linear regression
+# Independent variable GDPPC (set to 1 using ~) MUST SET
+bw_CV <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "CV", # Cross validation
+                adaptive = TRUE, # Use adaptive bandwith
+                kernel = "bisquare",
+                longlat = TRUE)
+
+bw_AIC <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "AIC",
+                adaptive = TRUE, # Set false for fixed bandwidth
+                kernel = "bisquare", 
+                longlat = TRUE)
+bw_CV # Number of neighbours
+```
+
+## Fixed Kernel
+
+```{r}
+bw_CV_fixed <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "CV", # Cross validation
+                adaptive = FALSE, # Use adaptive bandwith
+                kernel = "bisquare",
+                longlat = TRUE)
+
+bw_AIC_fixed <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "AIC",
+                adaptive = FALSE, # Set false for fixed bandwidth
+                kernel = "bisquare", 
+                longlat = TRUE)
+```
+
+# Part 3 : Geographically Weighted Summary Statistics with adaptive Bandwidith
+
+## Plot as Map
+
+**Note** : Must make sure that kernel, adaptive and longlat attributes for gwss function must be the same as the one set in bw.gwr to maintain consistency
+
+### Global Correlation
+
+```{r}
+# Special object -> list object containing metadata
+gwstat <- gwss(data = hunan_sp,
+                vars = "GDPPC",
+                bw = bw_AIC,
+                kernel = "bisquare",
+                adaptive = TRUE,
+                longlat = TRUE)
+```
+
+*Explanation* : 
+
+- LM -> Local Mean, (Mean of Kernel)
+- LSD -> Local Standard Deviation, (Std_dev of Kernel)
+- LVar -> Local Variance (Var of Kernel)
+- LSKe -> 
+- LCV -> Local Correlation Variance 
+
+Plot the map, need to access list and find common identifier
+```{r}
+gwstat_df <- as.data.frame(gwstat$SDF)
+hunan_gstat <- cbind(hunan_sf, gwstat_df) 
+# cbind just append the columns blindly
+# MUST NOT SORT OR ARRANGE as cbind assumes no change of sequence 
+```
+
+Actual Plot
+```{r}
+tm_shape(hunan_gstat) +
+    tm_fill("GDPPC_LM",
+            n=5,
+            style="quantile") +
+    tm_borders(alpha = 0.5) +
+    tm_layout(main.title = "Distribution of Geographically Weighted Mean",
+    main.title.position = "center",
+    main.title.size = 1.2,
+    legend.text.size = 0.6,
+    legend.height = 1.5,
+    legend.width = 1.5,
+    frame = TRUE)
+# Change heights, my computer sucks
+```
+
+### Local Correlation
+
+Check whether GDP is correlated with their neighbours geographically, see if their closest neighbours' GDP affect that region's GDP. Then compare against global correlation coefficent
+
+```{r}
+bw_CV_corr <- bw.gwr(GDPPC ~ GIO,
+                data = hunan_sp,
+                approach = "CV", # Cross validation
+                adaptive = TRUE, # Use adaptive bandwith
+                kernel = "bisquare",
+                longlat = TRUE)
+```
+
+```{r}
+
+```
+
+## Plot as Graph
+More effective for showing example
+
+```{r}
+
+```
+

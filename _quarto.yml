@@ -24,6 +24,8 @@ website:
         menu:
           - text: In Class Exercise 1
             href: InClassEx/InClassEx01/InClassEx01.qmd
+          - text: In Class Exercise 2
+            href: InClassEx/InClassEx02/InClassEx02.qmd
 format:
   html:
     theme: cosmo
