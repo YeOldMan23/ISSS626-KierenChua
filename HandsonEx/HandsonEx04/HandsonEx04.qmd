@@ -219,7 +219,7 @@ rswm_q
 ```
 
 ```{r}
-rswm_q$weights[10]
+rswm_q$weights[1]
 
 rswm_ids <- nb2listw(wm_q, glist=ids, style="B", zero.policy=TRUE)
 rswm_ids

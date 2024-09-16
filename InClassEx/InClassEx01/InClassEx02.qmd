@@ -13,3 +13,8 @@ execute:
 ```{r}
 pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot")
 ```
+
+```{r}
+# Read the dataset
+
+```
