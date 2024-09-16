@@ -233,6 +233,8 @@ summary(unlist(rswm_ids$weights))
 
 ## Spatial lag with row-standardized weights
 
+Lag represents the size of the search space. Think of it as the kernel size in the convolutional neural network, where the base case is k=1. Each order increases the kernel size by 1.
+
 Calculate average GCPPC value
 
 ```{r}
@@ -246,7 +248,7 @@ nb1 <- hunan$GDPPC[nb1]
 nb1
 ```
 
-**Question** : From what I see, since the you append the weighted average of the GDP to each region by row, you are essentially spreading out the GDP of each county so that the spread of GDP per county is more even and regions of high GDPPC can be better represented
+**Question** : From what I see, since the you append the weighted average of the GDP to each region by row, you are essentially spreading out the GDP of each neighbouring county so that the spread of GDP per county is more even and regions of high GDPPC can be better represented, since there is an assumption that if a neighbouring region's GDP will affect that particular region's GDP
 
 Add this new column to the sf for plotting
 

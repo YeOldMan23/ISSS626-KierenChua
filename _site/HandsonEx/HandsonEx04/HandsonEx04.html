@@ -1342,6 +1342,7 @@ B 88 7744 8.786867 0.3776535 3.8137</code></pre>
 <h1>Part 7 : Application of Spatial Weight Matrix</h1>
 <section id="spatial-lag-with-row-standardized-weights" class="level2">
 <h2 class="anchored" data-anchor-id="spatial-lag-with-row-standardized-weights">Spatial lag with row-standardized weights</h2>
+<p>Lag represents the size of the search space. Think of it as the kernel size in the convolutional neural network, where the base case is k=1. Each order increases the kernel size by 1.</p>
 <p>Calculate average GCPPC value</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb68"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>GDPPC.lag <span class="ot">&lt;-</span> <span class="fu">lag.listw</span>(rswm_q, hunan<span class="sc">$</span>GDPPC)</span>
@@ -1368,7 +1369,7 @@ B 88 7744 8.786867 0.3776535 3.8137</code></pre>
 <pre><code>[1] 20981 34592 24473 21311 22879</code></pre>
 </div>
 </div>
-<p><strong>Question</strong> : From what I see, since the you append the weighted average of the GDP to each region by row, you are essentially spreading out the GDP of each county so that the spread of GDP per county is more even and regions of high GDPPC can be better represented</p>
+<p><strong>Question</strong> : From what I see, since the you append the weighted average of the GDP to each region by row, you are essentially spreading out the GDP of each neighbouring county so that the spread of GDP per county is more even and regions of high GDPPC can be better represented, since there is an assumption that if a neighbouring region’s GDP will affect that particular region’s GDP</p>
 <p>Add this new column to the sf for plotting</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb72"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a>lag.list <span class="ot">&lt;-</span> <span class="fu">list</span>(hunan<span class="sc">$</span>NAME_3, <span class="fu">lag.listw</span>(rswm_q, hunan<span class="sc">$</span>GDPPC))</span>
