@@ -1,5 +1,5 @@
 ---
-title: "In Class Exercise 4 - Geographically Weighted Summary Statistics - gwModel Methods"
+title: "Hands on Exercise 5"
 author: "Kieren Chua"
 date: "September 20 2024"
 date-modified: "last-modified"
