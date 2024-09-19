@@ -1,0 +1,308 @@
+---
+title: "In Class Exercise 4 - Geographically Weighted Summary Statistics - gwModel Methods"
+author: "Kieren Chua"
+date: "September 20 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+# Global Measures of Spatial Autocorrelation
+
+## Part 1 : Initialization
+```{r}
+# Load the required packages
+pacman::p_load(sf, spdep, tmap, tidyverse)
+```
+
+```{r}
+hunan <- st_read(dsn = "data/geospatial", 
+                 layer = "Hunan")
+hunan2012 <- read_csv("data/aspatial/Hunan_2012.csv")
+hunan <- left_join(hunan,hunan2012) %>%
+  select(1:4, 7, 15)
+```
+## Part 2 : Visualising Regional Development Indicator
+
+```{r}
+equal <- tm_shape(hunan) +
+  tm_fill("GDPPC",
+          n = 5,
+          style = "equal") +
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "Equal interval classification")
+
+quantile <- tm_shape(hunan) +
+  tm_fill("GDPPC",
+          n = 5,
+          style = "quantile") +
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "Equal quantile classification")
+
+tmap_arrange(equal, 
+             quantile, 
+             asp=1, 
+             ncol=2)
+```
+
+### Computing Contiguity Spatial Weights
+
+#### Queen
+```{r}
+wm_q <- poly2nb(hunan, 
+                queen=TRUE)
+summary(wm_q)
+```
+
+#### Rook
+```{r}
+rswm_q <- nb2listw(wm_q, 
+                   style="W", 
+                   zero.policy = TRUE)
+rswm_q
+```
+
+### Global Measures of Spatial Autocorrelation: Moran’s I
+
+```{r}
+moran.test(hunan$GDPPC, 
+           listw=rswm_q, 
+           zero.policy = TRUE, 
+           na.action=na.omit)
+```
+
+**Question** : Based on the value of 0.3, the GDDPC seems to be weakly clustered by location
+
+```{r}
+set.seed(1234)
+bperm = moran.mc(hunan$GDPPC, 
+           listw=rswm_q,
+           nsim=999,
+           zero.policy = TRUE, 
+           na.action=na.omit)
+bperm
+```
+
+#### Visualization
+
+```{r}
+mean(bperm$res[1:999])
+var(bperm$res[1:999])
+summary(bperm$res[1:999])
+```
+
+```{r}
+hist(bperm$res, 
+     freq=TRUE, 
+     breaks=20, 
+     xlab="Simulated Moran's I")
+abline(v=0, 
+       col="red") 
+```
+
+### Global Measures of Spatial Autocorrelation: Geary’s C
+
+```{r}
+geary.test(hunan$GDPPC, listw=rswm_q)
+```
+
+Question : Since C value approaches 0, GDPPC seems to be clustered by location
+
+```{r}
+set.seed(1234)
+bperm=geary.mc(hunan$GDPPC, 
+               listw=rswm_q, 
+               nsim=999)
+bperm
+```
+
+#### Visualization
+
+```{r}
+mean(bperm$res[1:999])
+var(bperm$res[1:999])
+summary(bperm$res[1:999])
+```
+
+```{r}
+hist(bperm$res, freq=TRUE, breaks=20, xlab="Simulated Geary c")
+abline(v=1, col="red") 
+```
+
+## Part 3 : Spatial Correlogram
+
+### Moran I correlogram
+```{r}
+MI_corr <- sp.correlogram(wm_q, 
+                          hunan$GDPPC, 
+                          order=6, 
+                          method="I", 
+                          style="W")
+plot(MI_corr)
+```
+
+```{r}
+print(MI_corr)
+```
+
+Question : Since P value < 0.05 for lags of 1, 2, 3, 5, 6, we can determine that for these lags that these points are clustered according to the Moran I statistic and we can reject the NULL hypothesis which is that these points are randomly positioned
+
+### Compute Geary’s C correlogram and plot
+
+```{r}
+GC_corr <- sp.correlogram(wm_q, 
+                          hunan$GDPPC, 
+                          order=6, 
+                          method="C", 
+                          style="W")
+plot(GC_corr)
+```
+
+```{r}
+print(GC_corr)
+```
+
+# Local Measures of Spatial Autocorrelation
+
+## Computing local Moran’s I
+```{r}
+fips <- order(hunan$County)
+localMI <- localmoran(hunan$GDPPC, rswm_q)
+head(localMI)
+```
+
+```{r}
+printCoefmat(data.frame(
+  localMI[fips,], 
+  row.names=hunan$County[fips]),
+  check.names=FALSE)
+```
+
+```{r}
+hunan.localMI <- cbind(hunan,localMI) %>%
+  rename(Pr.Ii = Pr.z....E.Ii..)
+```
+
+### Mapping Local Moran Statistics and their P Values
+
+Mapping Local Moran Statistics
+```{r}
+tm_shape(hunan.localMI) +
+  tm_fill(col = "Ii", 
+          style = "pretty",
+          palette = "RdBu",
+          title = "local moran statistics") +
+  tm_borders(alpha = 0.5)
+```
+
+Mapping their P-values
+
+```{r}
+tm_shape(hunan.localMI) +
+  tm_fill(col = "Pr.Ii", 
+          breaks=c(-Inf, 0.001, 0.01, 0.05, 0.1, Inf),
+          palette="-Blues", 
+          title = "local Moran's I p-values") +
+  tm_borders(alpha = 0.5)
+```
+
+Now together
+
+```{r}
+localMI.map <- tm_shape(hunan.localMI) +
+  tm_fill(col = "Ii", 
+          style = "pretty", 
+          title = "local moran statistics") +
+  tm_borders(alpha = 0.5)
+
+pvalue.map <- tm_shape(hunan.localMI) +
+  tm_fill(col = "Pr.Ii", 
+          breaks=c(-Inf, 0.001, 0.01, 0.05, 0.1, Inf),
+          palette="-Blues", 
+          title = "local Moran's I p-values") +
+  tm_borders(alpha = 0.5)
+
+tmap_arrange(localMI.map, pvalue.map, asp=1, ncol=2)
+```
+
+## Creating a LISA Cluster Map
+
+### Plotting Moran scatterplot
+
+```{r}
+nci <- moran.plot(hunan$GDPPC, rswm_q,
+                  labels=as.character(hunan$County), 
+                  xlab="GDPPC 2012", 
+                  ylab="Spatially Lag GDPPC 2012")
+```
+
+### Plotting Moran scatterplot with standardised variable
+
+```{r}
+hunan$Z.GDPPC <- scale(hunan$GDPPC) %>% 
+  as.vector 
+```
+
+```{r}
+nci2 <- moran.plot(hunan$Z.GDPPC, rswm_q,
+                   labels=as.character(hunan$County),
+                   xlab="z-GDPPC 2012", 
+                   ylab="Spatially Lag z-GDPPC 2012")
+```
+
+### Preparing LISA map classes
+
+Not sure why to do these steps, will add explanation JIC
+
+```{r}
+quadrant <- vector(mode="numeric",length=nrow(localMI))
+```
+
+Next, derives the spatially lagged variable of interest (i.e. GDPPC) and centers the spatially lagged variable around its mean.
+```{r}
+hunan$lag_GDPPC <- lag.listw(rswm_q, hunan$GDPPC)
+DV <- hunan$lag_GDPPC - mean(hunan$lag_GDPPC)     
+```
+
+This is follow by centering the local Moran’s around the mean.
+```{r}
+LM_I <- localMI[,1] - mean(localMI[,1])    
+```
+
+Set the significance for hypothesis testing
+```{r}
+signif <- 0.05       
+```
+
+These four command lines define the low-low (1), low-high (2), high-low (3) and high-high (4) categories.
+```{r}
+quadrant[DV <0 & LM_I>0] <- 1
+quadrant[DV >0 & LM_I<0] <- 2
+quadrant[DV <0 & LM_I<0] <- 3  
+quadrant[DV >0 & LM_I>0] <- 4      
+```
+
+Lastly, places non-significant Moran in the category 0.
+```{r}
+quadrant[localMI[,5]>signif] <- 0
+```
+
+#### Plot
+
+```{r}
+hunan.localMI$quadrant <- quadrant
+colors <- c("#ffffff", "#2c7bb6", "#abd9e9", "#fdae61", "#d7191c")
+clusters <- c("insignificant", "low-low", "low-high", "high-low", "high-high")
+
+tm_shape(hunan.localMI) +
+  tm_fill(col = "quadrant", 
+          style = "cat", 
+          palette = colors[c(sort(unique(quadrant)))+1], 
+          labels = clusters[c(sort(unique(quadrant)))+1],
+          popup.vars = c("")) +
+  tm_view(set.zoom.limits = c(11,17)) +
+  tm_borders(alpha=0.5)
+```
