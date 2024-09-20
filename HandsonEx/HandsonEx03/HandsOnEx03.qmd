@@ -19,6 +19,7 @@ pacman::p_load(sf, spNetwork, tmap, tidyverse)
 ```
 
 Read the data
+
 ```{r}
 network <- st_read(dsn="data", 
                    layer="Punggol_St")
@@ -31,20 +32,22 @@ childcare <- st_read(dsn="data",
 
 ## Part 2 : Visualize the Data
 
-See the columns first
-::: {.tabset}
+See the columns first ::: {.tabset}
 
 ```{r}
 #| echo: true
 childcare
 ```
+
 ```{r}
 #| echo: true
 network
 ```
+
 :::
 
 Plot out the data
+
 ```{r}
 plot(st_geometry(network))
 plot(childcare,add=T,col='red',pch = 19)
@@ -62,6 +65,7 @@ tmap_mode('plot')
 ## Network KDE (NKDE) Analysis
 
 Need to lixelize where you convert the lines to set of pixels so that you can convert a road segment into line of points. This is so that can remove short roads
+
 ```{r}
 # Length of lixel -> 700 (Search Radius)
 # Minimum length of lixel -> 350 (Minimum required distance)
@@ -97,7 +101,8 @@ densities <- nkde(network,
                   verbose = FALSE)
 ```
 
-Visualize the data 
+Visualize the data
+
 ```{r}
 samples$density <- densities
 lixels$density <- densities

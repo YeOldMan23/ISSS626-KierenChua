@@ -15,7 +15,7 @@ execute:
 ## Part 1 : Reading the Data
 
 ```{r}
-pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot")
+pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot", "spatstat", "spNetwork", "tmaptools")
 ```
 
 Import the road accident data
@@ -107,6 +107,7 @@ selected_location_list <- c('Bangkok', 'Nonthaburi', 'Nakhon Pathom', 'Pathum Th
 selected_thai_boundaries <- thai_boundaries[thai_boundaries$ADM1_EN %in% selected_location_list,]
 plot(selected_thai_boundaries)
 ```
+
 Make sure that the other locations are also confined to the selected locations
 
 ```{r}
@@ -114,7 +115,6 @@ combined_geometry <- st_union(selected_thai_boundaries)
 print(combined_geometry)
 plot(combined_geometry)
 ```
-
 
 ```{r}
 # Filter by this combined geometry
@@ -125,9 +125,8 @@ contains_combined <- sapply(1:nrow(rdacc_sf), function(i) {
 filtered_rdacc_sf <- rdacc_sf[contains_combined, ]
 plot(filtered_rdacc_sf)
 ```
-We can see that there is a cluster in the reporting datetime and the incident datetime.
-But since the report and incident datetime is so similar there could be a relation.
-There seems to be also a cluster in presumed cause in roughly the same area.
+
+We can see that there is a cluster in the reporting datetime and the incident datetime. But since the report and incident datetime is so similar there could be a relation. There seems to be also a cluster in presumed cause in roughly the same area.
 
 ```{r}
 # Now filter the roadlines as well
@@ -150,8 +149,6 @@ cut_rl_sf$centroid <- st_centroid(cut_rl_sf$geometry)
 plot(st_geometry(cut_rl_sf$centroid))
 ```
 
-
-
 ```{r}
 # Filter for geometry
 contains_rl <- st_within(cut_rl_sf$centroid, combined_geometry, sparse = FALSE, prepared=TRUE)
@@ -161,68 +158,407 @@ contains_rl <- sapply(1:nrow(cut_rl_sf), function(i) {
 filtered_thai_rl_sf <- cut_rl_sf[contains_rl, ]
 plot(filtered_thai_rl_sf$centroid)
 ```
+
 ## Part 3 : Saving the Smaller Files
 
 The roadlines data is ver big, so saving to a smaller size file as a .rds file is advised
 
 ```{r}
-write_rds(filtered_thai_rl_sf, file='data/clean_data/filtered_thai_rl_sf.rds')
-write_rds(filtered_rdacc_sf, file='data/clean_data/filtered_rdacc_sf.rds')
-write_rds(selected_thai_boundaries, file='data/clean_data/selected_thai_boundaries.rds')
+# write_rds(filtered_thai_rl_sf, file='data/clean_data/filtered_thai_rl_sf.rds')
+# write_rds(filtered_rdacc_sf, file='data/clean_data/filtered_rdacc_sf.rds')
+# write_rds(selected_thai_boundaries, file='data/clean_data/selected_thai_boundaries.rds')
 ```
 
 ## Part 4 : Read the new file
 
-Now we can try to read the files again so that we can access the new data
-This also gives us an estimate of how long it will take to process the data
+Now we can try to read the files again so that we can access the new data This also gives us an estimate of how long it will take to process the data
 
 ```{r}
 filtered_thai_rl_sf <- readRDS('data/clean_data/filtered_thai_rl_sf.rds')
 filtered_rdacc_sf <- readRDS('data/clean_data/filtered_rdacc_sf.rds')
-
-# Drop the centroid
-filtered_thai_rl_sf <- filtered_thai_rl_sf %>% select(-centroid)
-
-# Find All Roads that have no accidents nearby
-distance_matrix <- st_distance(filtered_thai_rl_sf, filtered_rdacc_sf)
-min_distances <- apply(distance_matrix, 1, min)
-
-# If there are no accidents within 2km of the road, discard the road row
-filtered_thai_rl_sf <- filtered_thai_rl_sf[min_distances <= 2, ]
-
-plot(filtered_thai_rl_sf)
-plot(filtered_rdacc_sf, add=TRUE, col='red')
+filtered_thai_bd <- readRDS('data/clean_data/selected_thai_boundaries.rds')
 ```
 
 ## Part 4 : Plot all graphs together for visual prelimnary analysis'
 
-The plots are too big, split up by district
+Use tmaps, but split by area
 
 ```{r}
-tm_shape(lixels)+
-  tm_lines(col="density")+
+tm_shape(filtered_thai_rl_sf) +
+  tm_lines(col = "highway") +
+  tm_shape(filtered_rdacc_sf) +
+  tm_dots(col = "presumed_cause", shape = "accident_type") +
+  tm_layout(title = "Visual Preliminary Analysis")
+```
+Accidents seems to happen mostly on highways, with a few residential scattered, possible to remove some types of highways such as service.
+
+Seems from the main view that accidents happend among main roads / highways. Can try lixelize to find column
+
+```{r}
+par(mfrow = c(1, 1))
+```
+## Part 5 : 1st and 2nd Order Analysis of Road Accidents
+
+```{r}
+# Confine geometry to OWIN 
+filtered_thai_bd_owin <- as.owin(filtered_thai_bd)
+
+plot(filtered_thai_bd)
+
+# Turn points into PPP
+filtered_rdacc_ppp <- as.ppp(filtered_rdacc_sf$geometry)
+filtered_rdacc_ppp <- filtered_rdacc_ppp[filtered_thai_bd_owin]
+filtered_rdacc_ppp.km <- rescale.ppp(filtered_rdacc_ppp, 1000, "km")
+
+plot(filtered_rdacc_ppp)
+```
+
+### Check 1st Order and View
+
+We can try to do first order spatial analysis to see if there are any clusters
+
+#### Initial Overall View
+```{r}
+#| fig-width: 12
+par(mfrow = c(1, 2))
+# Use 1km as fixed bandwith
+filtered_rdacc_bw <- density(filtered_rdacc_ppp.km,
+                              sigma=1.0,
+                              edge=TRUE,
+                            kernel="gaussian")
+plot(filtered_rdacc_bw)
+plot(filtered_thai_bd$geometry)
+par(mfrow = c(1, 1))
+```
+Seems like accidents are clustered to within certain stretches of highway and also near 
+intersections.
+
+We can also try to filter by day to determine if the working days affect
+
+#### Split by District
+
+Filter by district
+1)  Bangkok
+2)  Nonthaburi
+3)  Nakhon Pathom
+4)  Pathum Thani
+5)  Samut Prakan
+6)  Samut Sakhon
+```{r}
+#| fig-width: 12
+bk <- filtered_rdacc_sf %>%
+  filter(province_en == "Bangkok")
+non <- filtered_rdacc_sf %>%
+  filter(province_en == "Nonthaburi")
+np <- filtered_rdacc_sf %>%
+  filter(province_en == "Nakhon Pathom")
+pt <- filtered_rdacc_sf %>%
+  filter(province_en == "Pathum Thani")
+sp <- filtered_rdacc_sf %>%
+  filter(province_en == "Samut Prakan")
+ss <- filtered_rdacc_sf %>%
+  filter(province_en == "Samut Sakhon")
+
+# Filter by Location
+bk_owin <- filtered_thai_bd %>% filter(ADM1_EN=="Bangkok") %>% as.owin()
+non_owin <- filtered_thai_bd %>% filter(ADM1_EN=="Nonthaburi") %>% as.owin()
+np_owin <- filtered_thai_bd %>% filter(ADM1_EN=="Nakhon Pathom") %>% as.owin()
+pt_owin <- filtered_thai_bd %>% filter(ADM1_EN=="Pathum Thani") %>% as.owin()
+sp_owin <- filtered_thai_bd %>% filter(ADM1_EN=="Samut Prakan") %>% as.owin()
+ss_owin <- filtered_thai_bd %>% filter(ADM1_EN=="Samut Sakhon") %>% as.owin()
+
+# Plot the graphs
+filtered_rdacc_ppp_bk <- filtered_rdacc_ppp[bk_owin]
+filtered_rdacc_ppp_non <- filtered_rdacc_ppp[non_owin]
+filtered_rdacc_ppp_np <- filtered_rdacc_ppp[np_owin]
+filtered_rdacc_ppp_pt <- filtered_rdacc_ppp[pt_owin]
+filtered_rdacc_ppp_sp <- filtered_rdacc_ppp[sp_owin]
+filtered_rdacc_ppp_ss <- filtered_rdacc_ppp[ss_owin]
+
+filtered_rdacc_ppp_bk.km <- rescale.ppp(filtered_rdacc_ppp_bk, 1000, "km")
+filtered_rdacc_ppp_non.km <- rescale.ppp(filtered_rdacc_ppp_non, 1000, "km")
+filtered_rdacc_ppp_np.km <- rescale.ppp(filtered_rdacc_ppp_np, 1000, "km")
+filtered_rdacc_ppp_pt.km <- rescale.ppp(filtered_rdacc_ppp_pt, 1000, "km")
+filtered_rdacc_ppp_sp.km <- rescale.ppp(filtered_rdacc_ppp_sp, 1000, "km")
+filtered_rdacc_ppp_ss.km <- rescale.ppp(filtered_rdacc_ppp_ss, 1000, "km")
+
+par(mfrow=c(3,2))
+plot(filtered_rdacc_ppp_bk.km, main="Bangkok")
+plot(filtered_rdacc_ppp_non.km , main="Nonthaburi")
+plot(filtered_rdacc_ppp_np.km, main="Nakhon Pathom")
+plot(filtered_rdacc_ppp_pt.km , main="Pathum Thani")
+plot(filtered_rdacc_ppp_sp.km, main="Samut Prakan")
+plot(filtered_rdacc_ppp_ss.km, main="Samut Sakhon")
+
+par(mfrow=c(1, 1))
+```
+
+
+```{r}
+#| fig-width: 30
+
+par(mfrow=c(3,2))
+plot(density(filtered_rdacc_ppp_bk.km, 
+             sigma=0.25, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Bangkok")
+plot(density(filtered_rdacc_ppp_non.km, 
+             sigma=0.25, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Nonthaburi")
+plot(density(filtered_rdacc_ppp_np.km, 
+             sigma=0.25, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Nakhon Pathom")
+plot(density(filtered_rdacc_ppp_pt.km, 
+             sigma=0.25, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Pathum Thani")
+plot(density(filtered_rdacc_ppp_sp.km, 
+             sigma=0.25, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Samut Prakan")
+plot(density(filtered_rdacc_ppp_ss.km, 
+             sigma=0.25, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Samut Sakhon")
+par(mfrow=c(1, 1))
+```
+
+## Part 6 : Check Network constrained
+
+Now that we can see that there are clusters, we can put it in numbers by doing
+lixelizing so that we can connect specific roads to the the locations.
+
+### Convert to LineString
+```{r}
+# Cast the multi-line to linestring
+# filtered_thai_rl_sf$line_string <- st_cast(filtered_thai_rl_sf$geometry, "LINESTRING")
+filtered_thai_rl_sf_linestring <- st_cast(filtered_thai_rl_sf, "LINESTRING")
+
+```
+### Additional Filtering
+
+```{r}
+# Drop the unecessary roads
+filtered_thai_rl_sf_linestring <- filtered_thai_rl_sf_linestring %>% filter(highway != 'service') %>%      filter(highway != 'unclassified') %>% filter(highway != 'residential') 
+filtered_thai_rl_sf_linestring
+
+# Drop uncessary non-discernable types or those caused by natural disasters
+filtered_rdacc_sf <- filtered_rdacc_sf %>% filter(weather_condition != "landslide") %>% filter(accident_type != "other")
+```
+### Time based additions
+
+```{r}
+
+# Add new column that describes the day of the week (Monday, Tuesday..)
+filtered_rdacc_sf$dayofweek_name <- wday(filtered_rdacc_sf$incident_datetime, label=TRUE, abbr=FALSE)
+
+# Add new column that describes time of day, split into morning(700am - 12pm), afternoon (12pm - 5pm), evening (5pm - 10pm), night (10pm - 5am)
+classify_time_period <- function(dt) {
+  hour <- hour(dt)
+  
+  if (hour >= 7 && hour < 12) {
+    return("Morning")
+  } else if (hour >= 12 && hour < 17) {
+    return("Afternoon")
+  } else if (hour >= 17 && hour < 22) {
+    return("Evening")
+  } else {
+    return("Night")
+  }
+}
+
+filtered_rdacc_sf <- filtered_rdacc_sf %>% mutate("time_of_day" = sapply(filtered_rdacc_sf$incident_datetime, classify_time_period))
+```
+
+### Finding bandwidths using K-Function 
+
+```{r}
+# Make a table for accident types and by district to reduce size of the the network
+#unique_locs <- unique(filtered_thai_bd$ADM1_EN)
+unique_accidents <- unique(filtered_rdacc_sf$accident_type)
+
+# Split into weekend and weekday
+wkdays <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+wkends <- c("Saturday", "Sunday")
 ```
 
 ```{r}
-# There is still too much road data, remove all data where accidents dont occur nearby
+set.seed(1234)
+# Sample 1 graph to initialize an suitable starting bw
+  
+loc_rdacc_sf <- filtered_rdacc_sf %>% 
+  filter(accident_type == unique_accidents[1]) %>%
+  filter(dayofweek_name %in% wkdays)
+
+
+kfun_rdacc <- kfunctions(filtered_thai_rl_sf_linestring, 
+                           loc_rdacc_sf,
+                           start = 0, 
+                           end = 1000, 
+                           step = 50, 
+                           width = 50, 
+                           nsim = 50, 
+                           resolution = 50,
+                           verbose = TRUE, 
+                            agg= 200,
+                           conf_int = 0.05)
+
+print(kfun_rdacc$plotk)
 
 ```
 
-## Part 5 : Kernel Analysis based off characteristics
-
-Maybe can find kernels based off characteristics of the road. Typical 
 
 ```{r}
+# Initialize a dataframe to keep all the indexes
+bw_dataframe <- data.frame(matrix(ncol = length(unqiue_dow), nrow = length(unique_accidents)))
+colnames(bw_dataframe) <- c("Weekday", "Weekend")
+rownames(bw_dataframe) <- unique_accidents
 
+# Since I cannot append dataframes to dataframes, will need to save indexes
+count <- 1
+for (i in seq_along(unique_accidents)) {
+  for (j in c("Weekday", "Weekend")) {
+    bw_dataframe[unique_accidents[i], j] <- count
+    count <- count + 1
+  }
+}
+
+bw_dataframe
+```
+
+### Lixelize based on bandwidths
+
+```{r}
+accidents_list <- vector("list", length(unique_accidents) * 2) # 2 cols
+lixels_list <- vector("list", length(unique_accidents) * 2)
+
+appending_index <- 1
+# Filter for acciednt types
+for (i in seq_along(unique_accidents)) {
+  # Filter the day
+  for (j in c("Weekday", "Weekend")) {
+    if (j == "Weekday") {
+      loc_rdacc_sf <- filtered_rdacc_sf %>% 
+        filter(accident_type == unique_accidents[i]) %>%
+        filter(dayofweek_name %in% wkdays)
+    }
+    else {
+      loc_rdacc_sf <- filtered_rdacc_sf %>% 
+        filter(accident_type == unique_accidents[i]) %>%
+        filter(dayofweek_name %in% wkends)
+    }
+    
+    # Skip if no draw
+    if (nrow(loc_rdacc_sf) <= 0) {
+      next
+    }
+    
+    lixelized <- lixelize_lines(filtered_thai_rl_sf_linestring, 
+                               1000, 
+                               mindist = NULL)
+    
+    samples <- lines_center(lixelized)
+    densities <- nkde(filtered_thai_rl_sf_linestring, 
+                      events = loc_rdacc_sf,
+                      w = rep(1, nrow(loc_rdacc_sf)),
+                      samples = samples,
+                      kernel_name = "quartic",
+                      bw = 300, 
+                      div= "bw", 
+                      method = "simple",
+                      digits = 3, 
+                      tol = 1,
+                      grid_shape = c(1,1), 
+                      max_depth = 5,
+                      agg = 5, 
+                      sparse = TRUE,
+                      verbose = TRUE)
+    
+    samples$density <- densities
+    lixelized$density <- densities
+    samples$density <- samples$density*1000
+    lixelized$density <- lixelized$density*1000
+    
+    # Append the values to the dataframe
+    print(appending_index)
+    accidents_list[[appending_index]] <- loc_rdacc_sf
+    lixels_list[[appending_index]] <- lixelized
+    appending_index <- appending_index + 1
+    
+    
+  }
+}
+
+```
+###  Plot Graphs By Name
+
+```{r}
+# | fig-width: 100
+tmap_mode("plot")
+# Print out the plots
+for (i in seq_along(unique_accidents)) {
+  for (j in c("Weekday", "Weekend")) {
+    # Get the index
+    cur_index <- bw_dataframe[unique_accidents[i], j]
+    print(cur_index)
+    set_title <- paste0(unique_accidents[i], " on ", j)
+    
+    map <- tm_shape(lixels_list[[cur_index]])+
+        tm_lines(col="density", scale=4.0, style = "quantile", palette="Blues") +
+#      tm_shape(accidents_list[[cur_index]])+
+#        tm_dots(col = 'time_of_day', palette='BrBG', style="cont") +
+        tm_layout(title = set_title)
+    print(map)
+  }
+}
 ```
 
 ```{r}
-# Filter the 2nd part too
-# write_rds({SHAPE FILE}, "data/rds/{SHAPE_FILE}.rds")
+# | fig-width: 50
+# Print out the plots
+tmap_mode('view')
+tm_shape(lixels_list[[2]])+
+  tm_lines(col="density", lwd="density", scale=4.0)+
+tm_shape(accidents_list[[2]], name="Time of Day")+
+  tm_dots(col = 'time_of_day', palette='BrBG') +
+tm_shape(accidents_list[[2]], name="Vehicle Type") +
+  tm_dots(col = 'vehicle_type', palette='Set2') + 
+tm_shape(filter(accidents_list[[2]], dayofweek_name %in% c('Saturday', 'Sunday')), name = "Weekend")+
+  tm_dots(col='red') + 
+tm_shape(filter(accidents_list[[2]], dayofweek_name %in% c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')), name = "Weekday")+
+  tm_dots(col='blue') + 
+tm_shape(accidents_list[[2]], name="Quarter")+
+  tm_dots(col = 'quarter', palette='viridis') +
+tm_layout(title = unique_locs[2])
+tmap_mode('plot')
 ```
 
 ```{r}
-# To read the file
-# SHAPE_NAME <- read_rds("data/rds/{SHAPE_FILE}.rds")
+# | fig-width: 50
+# Print out the plots
+tmap_mode('view')
+tm_shape(lixels_list[[3]])+
+  tm_lines(col="density", scale=4.0)+
+tm_shape(accidents_list[[3]], name="Time of Day")+
+  tm_dots(col = 'time_of_day', shape = "vehicle_type", palette='BrBG') +
+tm_shape(filter(accidents_list[[3]], dayofweek_name %in% c('Saturday', 'Sunday')), name = "Weekend")+
+  tm_dots(col='red') + 
+tm_shape(filter(accidents_list[[3]], dayofweek_name %in% c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')), name = "Weekday")+
+  tm_dots(col='blue') + 
+tm_shape(accidents_list[[3]], name="Quarter")+
+  tm_dots(col = 'quarter', palette='viridis') +
+tm_layout(title = unique_locs[3])
+tmap_mode('plot')
 ```
+
+
+
 
