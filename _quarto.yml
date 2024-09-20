@@ -29,7 +29,7 @@ website:
           - text: In Class Exercise 3
             href: InClassEx/InClassEx03/InClassEx03.qmd
           - text: In Class Exercise 4
-            href: InClassEx/InClassEx02/InClassEx02.qmd
+            href: InClassEx/InClassEx04/InClassEx04.qmd
 format:
   html:
     theme: cosmo
