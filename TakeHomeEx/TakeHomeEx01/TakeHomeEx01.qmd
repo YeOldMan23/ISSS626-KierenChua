@@ -164,9 +164,9 @@ plot(filtered_thai_rl_sf$centroid)
 The roadlines data is ver big, so saving to a smaller size file as a .rds file is advised
 
 ```{r}
-# write_rds(filtered_thai_rl_sf, file='data/clean_data/filtered_thai_rl_sf.rds')
-# write_rds(filtered_rdacc_sf, file='data/clean_data/filtered_rdacc_sf.rds')
-# write_rds(selected_thai_boundaries, file='data/clean_data/selected_thai_boundaries.rds')
+write_rds(filtered_thai_rl_sf, file='data/clean_data/filtered_thai_rl_sf.rds')
+write_rds(filtered_rdacc_sf, file='data/clean_data/filtered_rdacc_sf.rds')
+write_rds(selected_thai_boundaries, file='data/clean_data/selected_thai_boundaries.rds')
 ```
 
 ## Part 4 : Read the new file
@@ -331,10 +331,11 @@ plot(density(filtered_rdacc_ppp_ss.km,
 par(mfrow=c(1, 1))
 ```
 
-## Part 6 : Check Network constrained
+## Part 6 : Check Network constrained by Time
 
 Now that we can see that there are clusters, we can put it in numbers by doing
-lixelizing so that we can connect specific roads to the the locations.
+lixelizing to gain new insight by time instead of road conditions as specified
+in the task.
 
 ### Convert to LineString
 ```{r}
@@ -383,11 +384,9 @@ filtered_rdacc_sf <- filtered_rdacc_sf %>% mutate("time_of_day" = sapply(filtere
 ```{r}
 # Make a table for accident types and by district to reduce size of the the network
 #unique_locs <- unique(filtered_thai_bd$ADM1_EN)
-unique_accidents <- unique(filtered_rdacc_sf$accident_type)
+unique_tod <- unique(filtered_rdacc_sf$time_of_day)
+unique_dow <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
-# Split into weekend and weekday
-wkdays <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
-wkends <- c("Saturday", "Sunday")
 ```
 
 ```{r}
@@ -395,8 +394,8 @@ set.seed(1234)
 # Sample 1 graph to initialize an suitable starting bw
   
 loc_rdacc_sf <- filtered_rdacc_sf %>% 
-  filter(accident_type == unique_accidents[1]) %>%
-  filter(dayofweek_name %in% wkdays)
+  filter(time_of_day == unique_tod[1]) %>%
+  filter(dayofweek_name == unique_dow[1])
 
 
 kfun_rdacc <- kfunctions(filtered_thai_rl_sf_linestring, 
@@ -418,15 +417,15 @@ print(kfun_rdacc$plotk)
 
 ```{r}
 # Initialize a dataframe to keep all the indexes
-bw_dataframe <- data.frame(matrix(ncol = length(unqiue_dow), nrow = length(unique_accidents)))
-colnames(bw_dataframe) <- c("Weekday", "Weekend")
-rownames(bw_dataframe) <- unique_accidents
+bw_dataframe <- data.frame(matrix(ncol = length(unique_tod), nrow = length(unique_dow)))
+colnames(bw_dataframe) <- unique_tod
+rownames(bw_dataframe) <- unique_dow
 
 # Since I cannot append dataframes to dataframes, will need to save indexes
 count <- 1
-for (i in seq_along(unique_accidents)) {
-  for (j in c("Weekday", "Weekend")) {
-    bw_dataframe[unique_accidents[i], j] <- count
+for (i in seq_along(unique_dow)) {
+  for (j in seq_along(unique_tod)) {
+    bw_dataframe[unique_dow[i], unique_tod[j]] <- count
     count <- count + 1
   }
 }
@@ -437,31 +436,24 @@ bw_dataframe
 ### Lixelize based on bandwidths
 
 ```{r}
-accidents_list <- vector("list", length(unique_accidents) * 2) # 2 cols
-lixels_list <- vector("list", length(unique_accidents) * 2)
+accidents_list <- vector("list", length(unique_dow) * length(unique_tod)) # 2 cols
+lixels_list <- vector("list", length(unique_dow) * length(unique_tod))
 
 appending_index <- 1
 # Filter for acciednt types
-for (i in seq_along(unique_accidents)) {
+for (i in seq_along(unique_dow)) {
   # Filter the day
-  for (j in c("Weekday", "Weekend")) {
-    if (j == "Weekday") {
-      loc_rdacc_sf <- filtered_rdacc_sf %>% 
-        filter(accident_type == unique_accidents[i]) %>%
-        filter(dayofweek_name %in% wkdays)
-    }
-    else {
-      loc_rdacc_sf <- filtered_rdacc_sf %>% 
-        filter(accident_type == unique_accidents[i]) %>%
-        filter(dayofweek_name %in% wkends)
-    }
+  for (j in seq_along(unique_tod)) {
+    loc_rdacc_sf <- filtered_rdacc_sf %>% 
+      filter(time_of_day == unique_tod[j]) %>%
+      filter(dayofweek_name == unique_dow[i])
     
     # Skip if no draw
     if (nrow(loc_rdacc_sf) <= 0) {
       next
     }
     
-    lixelized <- lixelize_lines(filtered_thai_rl_sf_linestring, 
+    lixelized <- lixelize_lines.mc(filtered_thai_rl_sf_linestring, 
                                1000, 
                                mindist = NULL)
     
@@ -502,63 +494,34 @@ for (i in seq_along(unique_accidents)) {
 
 ```{r}
 # | fig-width: 100
-tmap_mode("plot")
+tmap_mode("view")
 # Print out the plots
-for (i in seq_along(unique_accidents)) {
-  for (j in c("Weekday", "Weekend")) {
+for (i in seq_along(unique_dow)) {
+  for (j in seq_along(unique_tod)) {
     # Get the index
-    cur_index <- bw_dataframe[unique_accidents[i], j]
+    cur_index <- bw_dataframe[unique_dow[i], unique_tod[j]]
     print(cur_index)
-    set_title <- paste0(unique_accidents[i], " on ", j)
+    set_title <- paste0(unique_dow[i], " on ", unique_tod[j])
     
     map <- tm_shape(lixels_list[[cur_index]])+
-        tm_lines(col="density", scale=4.0, style = "quantile", palette="Blues") +
+        tm_lines(col="highway", lwd="density", scale=4.0, style = "quantile") +
 #      tm_shape(accidents_list[[cur_index]])+
 #        tm_dots(col = 'time_of_day', palette='BrBG', style="cont") +
         tm_layout(title = set_title)
     print(map)
   }
 }
+tmap_mode("plot")
 ```
+
+### Histogram Analysis 
 
 ```{r}
-# | fig-width: 50
-# Print out the plots
-tmap_mode('view')
-tm_shape(lixels_list[[2]])+
-  tm_lines(col="density", lwd="density", scale=4.0)+
-tm_shape(accidents_list[[2]], name="Time of Day")+
-  tm_dots(col = 'time_of_day', palette='BrBG') +
-tm_shape(accidents_list[[2]], name="Vehicle Type") +
-  tm_dots(col = 'vehicle_type', palette='Set2') + 
-tm_shape(filter(accidents_list[[2]], dayofweek_name %in% c('Saturday', 'Sunday')), name = "Weekend")+
-  tm_dots(col='red') + 
-tm_shape(filter(accidents_list[[2]], dayofweek_name %in% c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')), name = "Weekday")+
-  tm_dots(col='blue') + 
-tm_shape(accidents_list[[2]], name="Quarter")+
-  tm_dots(col = 'quarter', palette='viridis') +
-tm_layout(title = unique_locs[2])
-tmap_mode('plot')
+hist(filtered_rdacc_sf$time_of_day)
+hist(filtered_rdacc_sf$dayofweek_name)
 ```
 
-```{r}
-# | fig-width: 50
-# Print out the plots
-tmap_mode('view')
-tm_shape(lixels_list[[3]])+
-  tm_lines(col="density", scale=4.0)+
-tm_shape(accidents_list[[3]], name="Time of Day")+
-  tm_dots(col = 'time_of_day', shape = "vehicle_type", palette='BrBG') +
-tm_shape(filter(accidents_list[[3]], dayofweek_name %in% c('Saturday', 'Sunday')), name = "Weekend")+
-  tm_dots(col='red') + 
-tm_shape(filter(accidents_list[[3]], dayofweek_name %in% c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')), name = "Weekday")+
-  tm_dots(col='blue') + 
-tm_shape(accidents_list[[3]], name="Quarter")+
-  tm_dots(col = 'quarter', palette='viridis') +
-tm_layout(title = unique_locs[3])
-tmap_mode('plot')
-```
+# Part 7 : Final Analysis
 
-
-
-
+Most accidents are happening on motorways, according to the graphs. This is also backed up by the kernel analysis in 
+part 4 where the regions of high density also correlate with the high network kernel density here. Therefore, the time of day and day of week do not really matter for accidents, most likely since the thai metropolitian area is a well lit region of Thailand. 
