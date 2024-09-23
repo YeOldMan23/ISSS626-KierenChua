@@ -1,0 +1,220 @@
+---
+title: "In Class Exercise 5 - Global and Local Measures of Spatial Autocorrelation : sfdep methods"
+author: "Kieren Chua"
+date: "September 23 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+# Part 1 : Read Package by File
+```{r}
+pacman::p_load(sf, sfdep, tmap, tidyverse)
+```
+
+```{r}
+hunan <- st_read(dsn = "data/geospatial", 
+                 layer = "Hunan")
+hunan2012 <- read_csv("data/aspatial/Hunan_2012.csv")
+
+# left join the data
+hunan_GDPPC <- left_join(hunan, hunan2012) %>%
+  select(1:4, 7, 15)
+```
+
+# Part 2 : Plotting a choropeth map
+
+```{r}
+equal <- tm_shape(hunan_GDPPC) +
+  tm_fill("GDPPC",
+          n = 5,
+          style = "equal") +
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "Equal interval classification")
+
+quantile <- tm_shape(hunan_GDPPC) +
+  tm_fill("GDPPC",
+          n = 5,
+          style = "quantile") +
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "Equal quantile classification")
+
+tmap_arrange(equal, 
+             quantile, 
+             asp=1, 
+             ncol=2)
+```
+
+## Deriving Queen's contiguity weights: sfdep methods
+
+```{r}
+wm_q <- hunan_GDPPC %>% mutate(nb = st_contiguity(geometry),
+wt = st_weights(nb, style = 'W'), # Standardised over neighbours
+.before = 1)
+
+# allow_zero : If true, assigned zero as lagged value to zone without neighbours
+```
+
+# Part 3 : Moran's I Test
+
+## Moran's I Test - Single Run
+
+```{r}
+moranI <- global_moran(wm_q$GDPPC,
+                        wm_q$nb,
+                        wm_q$wt)
+glimpse(moranI)
+```
+
+```{r}
+global_moran_test(wm_q$GDPPC,
+                        wm_q$nb,
+                        wm_q$wt)
+```
+
+If p-value of Moran's I smaller than set p-value, reject null hypothesis of CSR, infer that GDPPC is weakly clustered
+
+## Performing Global Moran's I Permutation Test
+
+Need to make this reproducable, so we set a seed
+
+```{r}
+set.seed(1234)
+```
+
+We need the conduct the test mutliple times
+
+```{r}
+global_moran_perm(wm_q$GDPPC,
+                        wm_q$nb,
+                        wm_q$wt,
+                        nsim=99) # Number of simulations start from 0
+```
+
+We can see that the p-value is even smaller.
+
+## Computing local Moran's I
+
+```{r}
+lisa <- wm_q %>% 
+            mutate(local_moran = local_moran(GDPPC, nb, wt, nsim=99), 
+                        .before=1) %>% 
+            unnest(local_moran) # Will combine back to OG file
+```
+
+Use mean for LISA Cluster Map if neighbours has normal distribution.
+If right/left skewed, use median for LISA Cluster Map
+
+## Individual Plots
+
+```{r}
+tmap_mode("plot")
+tm_shape(lisa) +
+    tm_fill("p_ii_sim") +
+    tm_borders(alpha=0.5) + 
+    tm_layout(main.title = "p-value of local Moran's I",
+    main.title.size = 2) 
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(lisa) +
+    tm_fill("ii") +
+    tm_borders(alpha=0.5) + 
+    tm_view(set.zoom.limits = c(6, 8)) +
+    tm_layout(main.title = "local Moran's I of GDPPC",
+    main.title.size = 2) 
+```
+
+## Visualizing Local Moran's I side by Side
+
+```{r}
+tmap_mode("plot")
+map1 <-tm_shape(lisa) +
+        tm_fill("ii") +
+        tm_borders(alpha=0.5) + 
+        tm_view(set.zoom.limits = c(6, 8)) +
+        tm_layout(main.title = "local Moran's I of GDPPC",
+        main.title.size = 2)
+
+map2 <- tm_shape(lisa) +
+        tm_fill("p_ii",
+                breaks=c(0, 0.001, 0.01, 0.05, 1),
+                labels=c("0", "0.001", "0.01", "0.05", "1")) +
+        tm_borders(alpha=0.5) +
+        tm_layout(main.title = "p-value of local Moran's I",
+        main.title.size = 0.8)
+
+tmap_arrange(map1, map2, ncol=2)
+```
+
+## LISA Map
+
+We can plot the High-High, High Low, Low-Low and Low-High regions to show whether there is autocorrelation
+
+```{r}
+# We filter out p_ii values < 0.05 for statistical significance
+lisa_sig <- lisa %>% 
+            filter(p_ii < 0.05)
+
+tmap_mode("plot")
+tm_shape(lisa) + 
+    tm_polygons() +
+    tm_borders(alpha=0.5) +
+tm_shape(lisa_sig) +
+    tm_fill("mean") +
+    tm_borders(alpha=0.4)
+```
+
+# Part 4 : Local Gi* Statistics
+
+## Calculating Local Gi* Statistics
+
+```{r}
+wm_idw <- hunan_GDPPC %>% 
+        mutate(nb = st_contiguity(geometry),
+        wts = st_inverse_distance(nb, geometry, scale = 1, alpha = 1), # Standardised over neighbours
+        .before = 1)
+```
+
+Compute Local Gi* Statistics using code below
+
+```{r}
+HCSA <- wm_idw %>% 
+        mutate(local_Gi = local_gstar_perm(GDPPC, nb, wts, nsim=99), .before = 1) %>%
+        unnest(local_Gi)
+HCSA
+```
+
+## Visualizing Gi*
+```{r}
+tmap_mode("plot")
+tm_shape(HCSA) +
+    tm_fill("gi_star") +
+    tm_borders(alpha =0.5) +
+    tm_view(set.zoom.limits =  c(6, 8))
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(HCSA) +
+    tm_fill("p_sim") +
+    tm_borders(alpha =0.4)
+```
+
+```{r}
+HCSA_sig <- HCSA %>% 
+            filter(p_sim < 0.05)
+
+tmap_mode("plot")
+tm_shape(HCSA) +
+    tm_polygons() +
+    tm_borders(alpha =0.5) +
+tm_shape(HCSA_sig) +
+    tm_fill("cluster") +
+    tm_borders(alpha=0.4)
+```
+
