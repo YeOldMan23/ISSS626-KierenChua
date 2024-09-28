@@ -1,0 +1,53 @@
+---
+title: "Take Home Exercise 2"
+author: "Kieren Chua"
+date: "August 26 2024"
+date-modified: "September 28 2024"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+# Part 1 : Reading the Data
+
+```{r}
+pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot", "spatstat", "tmaptools")
+```
+
+```{r}
+# Read the provincial data and the other data
+thailand_csv <- read_csv("data/thailand_domestic_tourism_2019_2023_ver2.csv") %>% mutate(year = year(date)) %>% mutate(month = month(date, label=TRUE)) %>% select(-province_thai, -region_thai)
+
+province_shp <- st_read(dsn = "data", layer = "tha_admbnda_adm1_rtsd_20220121") %>% st_transform(crs = 32647)
+```
+```{r}
+# See number of months and number of years
+
+```
+
+```{r}
+# Combine the data
+# combined_data <- left_join(province_shp, thailand_csv, by=("ADM1_EN" = thailand_csv$province_eng))
+```
+
+# Part 2 : Check if Space & Time - Independent
+
+To check if the data is space independent, we need to see if there is any correlation between the tourist numbers of each region to its neighbors. We shall use a non-COVID time period which is the year of 2019, so that the data is not affected by external factors.
+
+```{r}
+thailand_csv_2019 <- thailand_csv %>% filter(year == 2019)
+```
+
+After splitting by month, we can plot a space graph by month and then plot the number of tourist 
+by the month and location simultaneously. If we see any variation of clusters by the month, we know that it is time
+dependent. If there is a consistent cluster among all the time location, we know that it is space dependent.
+
+## Determining Neighbours
+
+```{r}
+```
+
+
+
