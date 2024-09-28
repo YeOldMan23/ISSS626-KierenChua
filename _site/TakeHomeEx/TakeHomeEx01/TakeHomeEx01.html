@@ -1328,7 +1328,7 @@ Sunday       25      26        27      28</code></pre>
 <span id="cb84-9"><a href="#cb84-9" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb84-10"><a href="#cb84-10" aria-hidden="true" tabindex="-1"></a>    </span>
 <span id="cb84-11"><a href="#cb84-11" aria-hidden="true" tabindex="-1"></a>    map <span class="ot">&lt;-</span> <span class="fu">tm_shape</span>(lixels_list[[cur_index]])<span class="sc">+</span></span>
-<span id="cb84-12"><a href="#cb84-12" aria-hidden="true" tabindex="-1"></a>        <span class="fu">tm_lines</span>(<span class="at">col=</span><span class="st">"highway"</span>, <span class="at">lwd=</span><span class="st">"density"</span>, <span class="at">scale=</span><span class="fl">4.0</span>) <span class="sc">+</span></span>
+<span id="cb84-12"><a href="#cb84-12" aria-hidden="true" tabindex="-1"></a>        <span class="fu">tm_lines</span>(<span class="at">col=</span><span class="st">"highway"</span>, <span class="at">lwd=</span><span class="st">"density"</span>, <span class="at">scale=</span><span class="fl">6.0</span>) <span class="sc">+</span></span>
 <span id="cb84-13"><a href="#cb84-13" aria-hidden="true" tabindex="-1"></a>      <span class="fu">tm_shape</span>(accidents_list[[cur_index]])<span class="sc">+</span></span>
 <span id="cb84-14"><a href="#cb84-14" aria-hidden="true" tabindex="-1"></a>        <span class="fu">tm_dots</span>(<span class="at">col=</span><span class="st">"vehicle_class"</span>) <span class="sc">+</span></span>
 <span id="cb84-15"><a href="#cb84-15" aria-hidden="true" tabindex="-1"></a>        <span class="fu">tm_layout</span>(<span class="at">title =</span> set_title)</span>

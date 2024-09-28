@@ -547,7 +547,7 @@ for (i in seq_along(unique_dow)) {
 
     
     map <- tm_shape(lixels_list[[cur_index]])+
-        tm_lines(col="highway", lwd="density", scale=4.0) +
+        tm_lines(col="highway", lwd="density", scale=6.0) +
       tm_shape(accidents_list[[cur_index]])+
         tm_dots(col="vehicle_class") +
         tm_layout(title = set_title)
@@ -556,7 +556,6 @@ for (i in seq_along(unique_dow)) {
   }
 }
 ```
-
 
 ## Part 7 : Final Analysis
 
