@@ -11,6 +11,7 @@ execute:
 ---
 
 # Part 1 : Import files and Read from the Data
+
 ```{r}
 pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot", "GWmodel", "knitr")
 ```
@@ -21,6 +22,7 @@ hunan_sf <- st_read(dsn = "data/geospatial",
                  layer = "Hunan")
 hunan2012 <- read_csv("data/aspatial/Hunan_2012.csv")
 ```
+
 Need to identify by common field name, in this case is County, will need to find common identifier
 
 ```{r}
@@ -96,15 +98,16 @@ gwstat <- gwss(data = hunan_sp,
                 longlat = TRUE)
 ```
 
-*Explanation* : 
+*Explanation* :
 
-- LM -> Local Mean, (Mean of Kernel)
-- LSD -> Local Standard Deviation, (Std_dev of Kernel)
-- LVar -> Local Variance (Var of Kernel)
-- LSKe -> 
-- LCV -> Local Correlation Variance 
+-   LM -\> Local Mean, (Mean of Kernel)
+-   LSD -\> Local Standard Deviation, (Std_dev of Kernel)
+-   LVar -\> Local Variance (Var of Kernel)
+-   LSKe -\>
+-   LCV -\> Local Correlation Variance
 
 Plot the map, need to access list and find common identifier
+
 ```{r}
 gwstat_df <- as.data.frame(gwstat$SDF)
 hunan_gstat <- cbind(hunan_sf, gwstat_df) 
@@ -113,6 +116,7 @@ hunan_gstat <- cbind(hunan_sf, gwstat_df)
 ```
 
 Actual Plot
+
 ```{r}
 tm_shape(hunan_gstat) +
     tm_fill("GDPPC_LM",
@@ -142,14 +146,22 @@ bw_CV_corr <- bw.gwr(GDPPC ~ GIO,
                 longlat = TRUE)
 ```
 
-```{r}
-
-```
 
 ## Plot as Graph
+
 More effective for showing example
 
 ```{r}
-
+tm_shape(hunan_Corr) +
+  tm_fill("gwSpearman",
+          n = 5,
+          style = "quantile") +
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "Local Spearman Rho",
+            main.title.position = "center",
+            main.title.size = 2.0,
+            legend.text.size = 1.2,
+            legend.height = 1.50, 
+            legend.width = 1.50,
+            frame = TRUE)
 ```
-
