@@ -18,7 +18,9 @@ pacman::p_load("sf", "sfdep", "tidyverse", "tmap", "ggstatsplot", "spatstat", "t
 
 ```{r}
 # Read the provincial data and the other data
-thailand_csv <- read_csv("data/thailand_domestic_tourism_2019_2023_ver2.csv") %>% mutate(year = year(date)) %>% mutate(month = month(date, label=TRUE))
+thailand_csv <- read_csv("data/thailand_domestic_tourism_2019_2023_ver2.csv") %>% 
+                mutate(year = year(date)) %>% 
+                mutate(month = month(date, label=TRUE))
 
 # There is some missing data
 unqiue_province <- unique(thailand_csv$province_eng)
@@ -35,7 +37,8 @@ province_shp <- st_read(dsn = "data", layer = "tha_admbnda_adm1_rtsd_20220121") 
                        -ADM0_PCODE,
                        -ADM1_TH) %>%
                 rename(province_eng = ADM1_EN) %>% # Rename for spacetime
-                filter(province_eng %in% unqiue_province) #Remove missing
+                filter(province_eng %in% unqiue_province) %>% #Remove missing
+                mutate(centroid = st_centroid(geometry))
 
 # Check for empty geometries
 empty_geometries <- st_is_empty(province_shp)
@@ -54,9 +57,24 @@ tm_shape(province_shp) +
 ```{r}
 tmap_mode("plot")
 ```
-# Part 2 : Check if Space & Time - Independent
 
-To check if the data is space independent, we need to see if there is any correlation between the tourist numbers of each region to its neighbors. We shall use a non-COVID time period which is the year of 2019, so that the data is not affected by external factors.
+# Part 2 : Determining Key-Economic Indicators
+
+```{r}
+economic_inidcators <- unique(thailand_csv$variable)
+print(economic_inidcators)
+```
+
+Looking at the indicators
+
+
+# Part 2 : Check if Space - Independent
+
+We can check if the location is space dependent by fixing the location to a specific time zone which would represent the general trend without the effect of time. This year would be 2019 when CoVID was not prevelant
+
+# Part 3 : Check if Space & Time - Independent
+
+To check if the data is space independent, we need to see if there is any correlation between the tourist numbers of each region to its neighbors. We can split it between 3 time period, which is Pre-Covid (2019), Covid (2020 - 2022) and Post - Covid (2023) to observe the effect of time without the influence of CoVID.
 
 ## Creating the Space-Time Layer
 
@@ -80,7 +98,7 @@ activate(spacetime_thai_year, "geometry")
 ## Global Moran's I Test
 
 ```{r}
-# TODO : Change to Distance Metrics, Use KnearestNeighbours
+# TODO : Change to Distance Metrics, Use KnearestNeighbours, and change to centroids
 wm_q <- province_shp %>% 
         mutate(nb = st_contiguity(geometry),
                 wt = st_weights(nb, style = 'W'), # Standardised over neighbours
