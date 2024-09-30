@@ -47,7 +47,7 @@ if (any(empty_geometries)) {
 ```
 Now we can draw out the data 
 ```{r}
-tmap_mode("view")
+tmap_mode("plot")
 tm_shape(province_shp) +
   tm_polygons()
 ```
@@ -80,11 +80,12 @@ activate(spacetime_thai_year, "geometry")
 ## Global Moran's I Test
 
 ```{r}
+# TODO : Change to Distance Metrics, Use KnearestNeighbours
 wm_q <- province_shp %>% 
         mutate(nb = st_contiguity(geometry),
                 wt = st_weights(nb, style = 'W'), # Standardised over neighbours
                 .before = 1,
-                #zero.policy = TRUE,
+                #zero.viewpolicy = TRUE,
                 allow_zero = TRUE) # There seems to be some islands
 ```
 
