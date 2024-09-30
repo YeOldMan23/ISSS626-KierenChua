@@ -13,41 +13,86 @@ execute:
 # Part 1 : Reading the Data
 
 ```{r}
-pacman::p_load("sf", "tidyverse", "tmap", "ggstatsplot", "spatstat", "tmaptools")
+pacman::p_load("sf", "sfdep", "tidyverse", "tmap", "ggstatsplot", "spatstat", "tmaptools")
 ```
 
 ```{r}
 # Read the provincial data and the other data
-thailand_csv <- read_csv("data/thailand_domestic_tourism_2019_2023_ver2.csv") %>% mutate(year = year(date)) %>% mutate(month = month(date, label=TRUE)) %>% select(-province_thai, -region_thai)
+thailand_csv <- read_csv("data/thailand_domestic_tourism_2019_2023_ver2.csv") %>% mutate(year = year(date)) %>% mutate(month = month(date, label=TRUE))
 
-province_shp <- st_read(dsn = "data", layer = "tha_admbnda_adm1_rtsd_20220121") %>% st_transform(crs = 32647)
+# There is some missing data
+unqiue_province <- unique(thailand_csv$province_eng)
+
+province_shp <- st_read(dsn = "data", layer = "tha_admbnda_adm1_rtsd_20220121") %>% 
+                st_transform(crs = 32647) %>%
+                select(-ADM1_REF, 
+                       -ADM1ALT1EN, 
+                       -ADM1ALT2EN, 
+                       -ADM1ALT1TH, 
+                       -ADM1ALT2TH, 
+                       -ADM0_TH, 
+                       -ADM0_EN,
+                       -ADM0_PCODE,
+                       -ADM1_TH) %>%
+                rename(province_eng = ADM1_EN) %>% # Rename for spacetime
+                filter(province_eng %in% unqiue_province) #Remove missing
+
+# Check for empty geometries
+empty_geometries <- st_is_empty(province_shp)
+if (any(empty_geometries)) {
+    warning("Some geometries are empty.")
+} else {
+  print("No Empty Geometries")
+}
+```
+Now we can draw out the data 
+```{r}
+tmap_mode("view")
+tm_shape(province_shp) +
+  tm_polygons()
 ```
 ```{r}
-# See number of months and number of years
-
+tmap_mode("plot")
 ```
-
-```{r}
-# Combine the data
-# combined_data <- left_join(province_shp, thailand_csv, by=("ADM1_EN" = thailand_csv$province_eng))
-```
-
 # Part 2 : Check if Space & Time - Independent
 
 To check if the data is space independent, we need to see if there is any correlation between the tourist numbers of each region to its neighbors. We shall use a non-COVID time period which is the year of 2019, so that the data is not affected by external factors.
 
-```{r}
-thailand_csv_2019 <- thailand_csv %>% filter(year == 2019)
-```
-
-After splitting by month, we can plot a space graph by month and then plot the number of tourist 
-by the month and location simultaneously. If we see any variation of clusters by the month, we know that it is time
-dependent. If there is a consistent cluster among all the time location, we know that it is space dependent.
-
-## Determining Neighbours
+## Creating the Space-Time Layer
 
 ```{r}
+spacetime_thai_year <- spacetime(thailand_csv, 
+                                    .loc_col = "province_eng", 
+                                    .time_col= "year",
+                                    .geometry = province_shp)
 ```
 
+Verify that spacetime object has both geometry and data
 
+```{r}
+activate(spacetime_thai_year, "data")
+```
 
+```{r}
+activate(spacetime_thai_year, "geometry")
+```
+
+## Global Moran's I Test
+
+```{r}
+wm_q <- province_shp %>% 
+        mutate(nb = st_contiguity(geometry),
+                wt = st_weights(nb, style = 'W'), # Standardised over neighbours
+                .before = 1,
+                #zero.policy = TRUE,
+                allow_zero = TRUE) # There seems to be some islands
+```
+
+Now we conduct Moran's I for every month and every year
+```{r}
+unique_month <- unique(thailand_csv$month)
+unique_year <- unique(thailand_csv$year) 
+```
+
+```{r}
+```
