@@ -13,14 +13,15 @@ execute:
 # Part 1 : Reading the Data
 
 ```{r}
-pacman::p_load("sf", "sfdep", "tidyverse", "tmap", "ggstatsplot", "spatstat", "tmaptools")
+pacman::p_load("sf", "sfdep", "spdep", "knitr", "tidyverse", "tmap", "ggstatsplot", "spatstat", "tmaptools", "lubridate")
 ```
 
 ```{r}
 # Read the provincial data and the other data
 thailand_csv <- read_csv("data/thailand_domestic_tourism_2019_2023_ver2.csv") %>% 
                 mutate(year = year(date)) %>% 
-                mutate(month = month(date, label=TRUE))
+                mutate(month = month(date)) %>% 
+                select(-province_thai, -region_thai)
 
 # There is some missing data
 unqiue_province <- unique(thailand_csv$province_eng)
@@ -52,11 +53,10 @@ Now we can draw out the data
 ```{r}
 tmap_mode("plot")
 tm_shape(province_shp) +
-  tm_polygons()
+  tm_polygons() +
+  tm_dots()
 ```
-```{r}
-tmap_mode("plot")
-```
+
 
 # Part 2 : Determining Key-Economic Indicators
 
@@ -65,23 +65,190 @@ economic_inidcators <- unique(thailand_csv$variable)
 print(economic_inidcators)
 ```
 
-Looking at the indicators
+Looking at the indicators, we can rely on the revenue streams as an indicator for tourism economic indicators, which are revenue_all, revenue_thai and revenue_foreign. To get a better sense of clustering, we can make new columns that represents the average revenue generated per tourist. We can do this for both thai tourist and foreign tourists
 
+```{r}
+thailand_csv_thai_no <- thailand_csv %>% filter(variable == "no_tourist_thai")
+thailand_csv_fore_no <- thailand_csv %>% filter(variable == "no_tourist_foreign")
+thailand_csv_thai_rev <- thailand_csv %>% filter(variable == "revenue_thai")
+thailand_csv_fore_rev <- thailand_csv %>% filter(variable == "revenue_foreign")
+```
 
-# Part 2 : Check if Space - Independent
+We have to make a new dataframe which contains the revenue per tourist by date
+```{r}
+thailand_csv_fore_revratio <- thailand_csv_fore_rev$value / thailand_csv_fore_no$value
+thailand_csv_thai_revratio <- thailand_csv_thai_rev$value / thailand_csv_thai_no$value
+```
+
+```{r}
+thai_df <- data.frame(
+  province_eng = thailand_csv_thai_no$province_eng,
+  month = thailand_csv_thai_no$month,
+  year = thailand_csv_thai_no$year,
+  fore_rev_ratio = thailand_csv_fore_revratio,
+  thai_rev_ratio = thailand_csv_thai_revratio
+)
+```
+
+```{r}
+thai_df
+```
+Note that there are some NaN values due to division by 0, most likely where there are no tourist visiting. We will exclude them from calculations in the future. There will also most likely
+
+# Part 3 : Check if Space - Independent
 
 We can check if the location is space dependent by fixing the location to a specific time zone which would represent the general trend without the effect of time. This year would be 2019 when CoVID was not prevelant
 
-# Part 3 : Check if Space & Time - Independent
+## Get Neighbours and Weights
 
-To check if the data is space independent, we need to see if there is any correlation between the tourist numbers of each region to its neighbors. We can split it between 3 time period, which is Pre-Covid (2019), Covid (2020 - 2022) and Post - Covid (2023) to observe the effect of time without the influence of CoVID.
+### Get Nearest Neighbours
 
-## Creating the Space-Time Layer
+Since there are islands, we must use distance based weights instead
+Based on these neighbours, we can calculate the weights by taking the inverse of
+the distance between them and the neighbours
 
 ```{r}
-spacetime_thai_year <- spacetime(thailand_csv, 
+k1 <- knn2nb(knearneigh(province_shp$centroid))
+k1dists <- unlist(nbdists(k1, province_shp$centroid))
+summary(k1dists)
+```
+Since the max distance is 124.814km, use that as nearest neighbors for adaptive neighbours
+
+```{r}
+adapt_neighbours <- dnearneigh(province_shp$centroid, 0, 124814)
+```
+
+Plot the graph to confirm
+
+```{r}
+plot(province_shp$geometry, border="lightgrey")
+plot(adapt_neighbours, province_shp$centroid, add=TRUE, col="red")
+```
+### Calculate distance based weights
+
+Since there are islands, we need to use distance based weights instead.
+
+```{r}
+dist <- nbdists(adapt_neighbours, province_shp$centroid)
+ids <- lapply(dist, function(x) 1/(x))
+ids
+```
+
+Here are the row normalized weights as welll
+```{r}
+thai_weights <- st_weights(adapt_neighbours)
+```
+
+## Check if Space & Time - Independent
+
+To check if the data is space independent, we need to see if there is any correlation between the tourist numbers of each region to its neighbors. We can split it between 3 time period, which is Pre-Covid (2019), Covid (2020 - 2022) and Post - Covid (2023) to observe the effect of time without the influence of CoVID. **Use sfdep methods**
+
+### Convert Year And Month to Integers
+
+Since spacetime objects only take in integers, we can convert year and months to integers. To combine them together, we need a system that can identify each month-year combination uniquely. Since the time period is from 2019 - 2023, we can use the last 2 integers to determine the year. The year is already an int, but now we need to map the month using the lubridate packge
+
+```{r}
+thailand_csv$month_int <- lubridate::month(thailand_csv$date)
+
+head(thailand_csv$month_int)
+```
+We will choose the year 2019 as the year to inspect first, using the month of December and the use revenue_thai first
+
+```{r}
+check_space <- thailand_csv %>%
+                filter(year == 2020) %>%
+                filter(variable == "revenue_thai") %>%
+                filter(month_int == 12)
+
+```
+
+Now combine with the location data
+
+```{r}
+check_geom <- left_join(province_shp,  check_space, by='province_eng')
+```
+
+```{r}
+wm_q <- check_geom %>% 
+        mutate(nb = nb2listw(adapt_neighbours),
+              wt = thai_weights,
+              .before=1)
+```
+
+### Moran's I Test - Simple Check
+
+```{r}
+moranI <- global_moran(check_geom$value,
+                        adapt_neighbours,
+                        dist)
+glimpse(moranI)
+```
+
+```{r}
+global_moran_test(check_geom$value,
+                        adapt_neighbours,
+                        dist)
+```
+### Moran's I Test - Simulation
+
+
+```{r}
+set.seed(1234)
+global_moran_perm(check_geom$value,
+                        adapt_neighbours,
+                        dist,
+                        nsim=99) # Number of simulations start from 0
+```
+```{r}
+tm_shape(check_geom) + 
+  tm_polygons("value")
+
+```
+
+### Multi-facet check
+
+Now that we can confirm one, we can try to do for all collections of months and years
+
+```{r}
+set.seed(1234)
+unique_months <- unique(thailand_csv$month_int)
+unique_years <- unique(thailand_csv$year)
+
+for (i in seq_along(unique_years)) {
+  for (j in seq_along(unique_months)) {
+    
+    # Cut out specific data
+    print_statement <- paste0("Year : ", unique_years[i], " Month : ", unique_months[j])
+    check_space <- thailand_csv %>%
+                filter(year == unique_years[i]) %>%
+                filter(variable == "revenue_all") %>%
+                filter(month_int == unique_months[j])
+    
+    if (length(check_space) == 0) {
+      next
+    } else {
+    
+    check_geom <- left_join(province_shp,  check_space, by='province_eng')
+    
+    cur_test <- global_moran_perm(check_geom$value,
+                        adapt_neighbours,
+                        dist,
+                        nsim=99) # Number of simulations start from 0
+    
+    print(print_statement)
+    print(cur_test)
+    }
+  }
+}
+```
+
+
+# Part 4 : Creating the Space-Time Layer For Emerging Hot/Cold Spots 
+
+```{r}
+spacetime_thai_year <- spacetime(check_space, 
                                     .loc_col = "province_eng", 
-                                    .time_col= "year",
+                                    .time_col= "month_int",
                                     .geometry = province_shp)
 ```
 
@@ -96,6 +263,7 @@ activate(spacetime_thai_year, "geometry")
 ```
 
 ## Global Moran's I Test
+
 
 ```{r}
 # TODO : Change to Distance Metrics, Use KnearestNeighbours, and change to centroids
