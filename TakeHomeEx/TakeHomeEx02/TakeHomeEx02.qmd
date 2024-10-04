@@ -13,7 +13,7 @@ execute:
 # Part 1 : Reading the Data
 
 ```{r}
-pacman::p_load("sf", "sfdep", "spdep", "knitr", "tidyverse", "tmap", "ggstatsplot", "spatstat", "tmaptools", "lubridate")
+pacman::p_load("sf", "sfdep", "spdep", "knitr", "tidyverse", "tmap", "ggstatsplot", "spatstat", "tmaptools", "lubridate", "Kendall")
 ```
 
 ```{r}
@@ -36,7 +36,11 @@ province_shp <- st_read(dsn = "data", layer = "tha_admbnda_adm1_rtsd_20220121") 
                        -ADM0_TH, 
                        -ADM0_EN,
                        -ADM0_PCODE,
-                       -ADM1_TH) %>%
+                       -ADM1_PCODE,
+                       -date,
+                       -ADM1_TH,
+                       -validOn,
+                       -validTo) %>%
                 rename(province_eng = ADM1_EN) %>% # Rename for spacetime
                 filter(province_eng %in% unqiue_province) %>% #Remove missing
                 mutate(centroid = st_centroid(geometry))
@@ -49,14 +53,21 @@ if (any(empty_geometries)) {
   print("No Empty Geometries")
 }
 ```
-Now we can draw out the data 
+
+Now we can draw out the data
+
 ```{r}
+#| fig-width: 12
+
 tmap_mode("plot")
 tm_shape(province_shp) +
   tm_polygons() +
-  tm_dots()
+  tm_text("province_eng", size = 1.0)
 ```
 
+```{r}
+tmap_mode("plot")
+```
 
 # Part 2 : Determining Key-Economic Indicators
 
@@ -70,14 +81,18 @@ Looking at the indicators, we can rely on the revenue streams as an indicator fo
 ```{r}
 thailand_csv_thai_no <- thailand_csv %>% filter(variable == "no_tourist_thai")
 thailand_csv_fore_no <- thailand_csv %>% filter(variable == "no_tourist_foreign")
+thailand_csv_total_no <- thailand_csv %>% filter(variable == "no_tourist_all")
 thailand_csv_thai_rev <- thailand_csv %>% filter(variable == "revenue_thai")
 thailand_csv_fore_rev <- thailand_csv %>% filter(variable == "revenue_foreign")
+thailand_csv_total_rev <- thailand_csv %>% filter(variable == "revenue_all")
 ```
 
 We have to make a new dataframe which contains the revenue per tourist by date
+
 ```{r}
 thailand_csv_fore_revratio <- thailand_csv_fore_rev$value / thailand_csv_fore_no$value
 thailand_csv_thai_revratio <- thailand_csv_thai_rev$value / thailand_csv_thai_no$value
+thailand_csv_total_revratio <- thailand_csv_total_rev$value / thailand_csv_total_no$value
 ```
 
 ```{r}
@@ -86,16 +101,18 @@ thai_df <- data.frame(
   month = thailand_csv_thai_no$month,
   year = thailand_csv_thai_no$year,
   fore_rev_ratio = thailand_csv_fore_revratio,
-  thai_rev_ratio = thailand_csv_thai_revratio
+  thai_rev_ratio = thailand_csv_thai_revratio,
+  total_rev_ratio = thailand_csv_total_revratio
 )
 ```
 
 ```{r}
 thai_df
 ```
+
 Note that there are some NaN values due to division by 0, most likely where there are no tourist visiting. We will exclude them from calculations in the future. There will also most likely
 
-# Part 3 : Check if Space - Independent
+# Part 3 : Check if Space and Time Independent
 
 We can check if the location is space dependent by fixing the location to a specific time zone which would represent the general trend without the effect of time. This year would be 2019 when CoVID was not prevelant
 
@@ -103,15 +120,14 @@ We can check if the location is space dependent by fixing the location to a spec
 
 ### Get Nearest Neighbours
 
-Since there are islands, we must use distance based weights instead
-Based on these neighbours, we can calculate the weights by taking the inverse of
-the distance between them and the neighbours
+Since there are islands, we must use distance based weights instead Based on these neighbours, we can calculate the weights by taking the inverse of the distance between them and the neighbours
 
 ```{r}
 k1 <- knn2nb(knearneigh(province_shp$centroid))
 k1dists <- unlist(nbdists(k1, province_shp$centroid))
 summary(k1dists)
 ```
+
 Since the max distance is 124.814km, use that as nearest neighbors for adaptive neighbours
 
 ```{r}
@@ -124,22 +140,27 @@ Plot the graph to confirm
 plot(province_shp$geometry, border="lightgrey")
 plot(adapt_neighbours, province_shp$centroid, add=TRUE, col="red")
 ```
-### Calculate distance based weights
 
-Since there are islands, we need to use distance based weights instead.
+### Calculate weights
+
+There are 2 options that seem to fit this criteria, inverse distance and row standardised weights. Below is the inverse distance weights.
 
 ```{r}
-dist <- nbdists(adapt_neighbours, province_shp$centroid)
+dist <- nbdists(adapt_neighbours, province_shp$centroid / 1000)
 ids <- lapply(dist, function(x) 1/(x))
 ids
 ```
 
 Here are the row normalized weights as welll
+
 ```{r}
 thai_weights <- st_weights(adapt_neighbours)
+thai_weights
 ```
 
-## Check if Space & Time - Independent
+We shall use row standardized ones moving forward since the data for feature is skewed, as shown in [this part]{#choosing-a-statistic}
+
+## Check if Space Independent
 
 To check if the data is space independent, we need to see if there is any correlation between the tourist numbers of each region to its neighbors. We can split it between 3 time period, which is Pre-Covid (2019), Covid (2020 - 2022) and Post - Covid (2023) to observe the effect of time without the influence of CoVID. **Use sfdep methods**
 
@@ -147,19 +168,12 @@ To check if the data is space independent, we need to see if there is any correl
 
 Since spacetime objects only take in integers, we can convert year and months to integers. To combine them together, we need a system that can identify each month-year combination uniquely. Since the time period is from 2019 - 2023, we can use the last 2 integers to determine the year. The year is already an int, but now we need to map the month using the lubridate packge
 
-```{r}
-thailand_csv$month_int <- lubridate::month(thailand_csv$date)
-
-head(thailand_csv$month_int)
-```
-We will choose the year 2019 as the year to inspect first, using the month of December and the use revenue_thai first
+We will choose the year 2020 as the year to inspect first, using the month of December and use total_rev_ratio first
 
 ```{r}
-check_space <- thailand_csv %>%
+check_space <- thai_df %>%
                 filter(year == 2020) %>%
-                filter(variable == "revenue_thai") %>%
-                filter(month_int == 12)
-
+                filter(month == 12)
 ```
 
 Now combine with the location data
@@ -168,118 +182,343 @@ Now combine with the location data
 check_geom <- left_join(province_shp,  check_space, by='province_eng')
 ```
 
-```{r}
-wm_q <- check_geom %>% 
-        mutate(nb = nb2listw(adapt_neighbours),
-              wt = thai_weights,
-              .before=1)
-```
-
 ### Moran's I Test - Simple Check
 
 ```{r}
-moranI <- global_moran(check_geom$value,
+moranI <- global_moran(check_geom$total_rev_ratio,
                         adapt_neighbours,
-                        dist)
+                        thai_weights)
 glimpse(moranI)
 ```
 
 ```{r}
-global_moran_test(check_geom$value,
+global_moran_test(check_geom$total_rev_ratio,
                         adapt_neighbours,
-                        dist)
+                        thai_weights)
 ```
+
 ### Moran's I Test - Simulation
 
+Our null hypothesis is that total revenue ratio is not clustered and it values follow a completely random process. If Moran's I Test
 
 ```{r}
 set.seed(1234)
-global_moran_perm(check_geom$value,
+global_moran_perm(check_geom$total_rev_ratio,
                         adapt_neighbours,
-                        dist,
+                        thai_weights,
                         nsim=99) # Number of simulations start from 0
 ```
-```{r}
-tm_shape(check_geom) + 
-  tm_polygons("value")
 
-```
+Since p-value is small (\< 0.05), we reject the null-hypothesis and accept an alternative hypothesis which is the data is spatially clustered considering a Moran's I value of 0.47213, although weakly
 
-### Multi-facet check
+### Local Moran's I - Simple Check
 
-Now that we can confirm one, we can try to do for all collections of months and years
+We can reuse the same time period to check for Local Moran's.
 
 ```{r}
 set.seed(1234)
-unique_months <- unique(thailand_csv$month_int)
-unique_years <- unique(thailand_csv$year)
+lisa <- check_geom %>%
+        mutate(local_moran = local_moran(check_geom$total_rev_ratio,
+                                         adapt_neighbours,
+                                         thai_weights, 
+                                         nsim=99)) %>%
+        unnest(local_moran)
+```
+
+```{r}
+l_moran_1 <- tm_shape(lisa) +
+    tm_fill("ii") +
+    tm_borders(alpha=0.5) + 
+    tm_view(set.zoom.limits = c(6, 8)) +
+    tm_layout(main.title = "local Moran's I of Total Revenue Ratio",
+    main.title.size = 0.65) 
+
+
+l_moran_2 <- tm_shape(lisa) +
+    tm_fill("p_ii_sim", 
+            breaks = c(0, 0.001, 0.01, 0.05, 1),
+              labels = c("0.001", "0.01", "0.05", "Not sig")) +
+    tm_borders(alpha=0.5) + 
+    tm_layout(main.title = "p-value of local Moran's I",
+    main.title.size = 1) 
+
+tmap_arrange(l_moran_1, l_moran_2, ncol=2)
+```
+
+Now we need to filter out non-signifcant values (p_ii_sim \> 0.05)
+
+```{r}
+lisa_sig <- lisa  %>%
+  filter(p_ii_sim < 0.05)
+tmap_mode("plot")
+tm_shape(lisa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(lisa_sig) +
+  tm_fill("mean") + 
+  tm_borders(alpha = 0.4)
+```
+
+We can see that the regions of Phuket and Krabi form a High-High Cluster where seems correct since they are both tourist destination. For Bangkok, it is also expected that it is a High-Low Cluster since the centroids are. New finds such as Kalasin show a Low-Low Cluster which indicate tourism is weak there at this time of year.
+
+### Hot Spot and Cold Spot Area Analysis (HCSA)
+
+Now can also conduct a Hot Spot and Cold Spot Analysis for this time period. We can do so using local Gi\* Statistics
+
+```{r}
+set.seed(1234)
+HCSA <- check_geom %>% 
+  mutate(local_Gi = local_gstar_perm(
+    total_rev_ratio, adapt_neighbours, thai_weights, nsim = 99),
+         .before = 1) %>%
+  unnest(local_Gi)
+```
+
+Note that we also need to remove insignificant p-values.
+
+```{r}
+tmap_mode("plot")
+HCSA_map1 <- tm_shape(HCSA) +
+  tm_fill("gi_star") + 
+  tm_borders(alpha = 0.5) +
+  tm_view(set.zoom.limits = c(6,8)) +
+  tm_layout(main.title = "Gi* of Total Revenue Ratio",
+            main.title.size = 0.8)
+
+HCSA_map2 <- tm_shape(HCSA) +
+  tm_fill("p_value",
+          breaks = c(0, 0.001, 0.01, 0.05, 1),
+              labels = c("0.001", "0.01", "0.05", "Not sig")) + 
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "p-value of Gi*",
+            main.title.size = 0.8)
+
+tmap_arrange(HCSA_map1, HCSA_map2, ncol = 2)
+```
+
+```{r}
+HCSA_sig <- HCSA  %>%
+  filter(p_sim < 0.05)
+tmap_mode("plot")
+tm_shape(HCSA) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(HCSA_sig) +
+  tm_fill("cluster") + 
+  tm_borders(alpha = 0.4)
+```
+
+We can see that there are 2 hotspots and 2 coldspots. Note that the hotspots are the tourism centers of Phuket and Bangkok.
+
+### Choosing a Statistic
+
+To better visualize the other splits, we can show them here. Note the missing data in the original csv file which leads to missing data in the foreign revenue ratio group. Moving on, we shall use the **total revenue ratio**.
+
+```{r}
+total_ratio_map <- tm_shape(check_geom) + 
+  tm_polygons("total_rev_ratio") +
+  tm_layout(title = "Total Revenue Ratio")
+  
+thai_ratio_map <- tm_shape(check_geom) +
+  tm_polygons("thai_rev_ratio") + 
+  tm_layout(title = "Thai Revenue Ratio")
+
+fore_ratio_map <- tm_shape(check_geom) +
+  tm_polygons("fore_rev_ratio") +
+  tm_layout(title = "Foreign Revenue Ratio")
+
+tmap_arrange(total_ratio_map, thai_ratio_map, fore_ratio_map, ncol=3)
+```
+
+**Note** We see that that the total revenue ratio follows more closely to the thai revenue ratio instead of the foreign revenue ratio. However in terms of value, we see that the foreigner spending power is higher as seen by the splits .
+
+We can confirm this by seeing the number of foreign tourists vs thai tourists, where ehy
+
+## Checking for Time - Independence by checking some time zones
+
+Now that we can confirm one, we can try to do for specific months and years which are the pre-covid, during covid and post-covid years respectively
+
+```{r}
+set.seed(1234)
+
+unique_years <- c(2019, 2022, 2023)
 
 for (i in seq_along(unique_years)) {
+  # Filter out the year
+  check_space_year <-thai_df %>%
+                filter(year == unique_years[i])
+  
+  unique_months <- unique(check_space_year$month)
+  
+  
   for (j in seq_along(unique_months)) {
     
     # Cut out specific data
     print_statement <- paste0("Year : ", unique_years[i], " Month : ", unique_months[j])
-    check_space <- thailand_csv %>%
+    check_space <- thai_df %>%
                 filter(year == unique_years[i]) %>%
-                filter(variable == "revenue_all") %>%
-                filter(month_int == unique_months[j])
+                filter(month == unique_months[j])
     
-    if (length(check_space) == 0) {
+    if (nrow(check_space) == 0) {
       next
-    } else {
+    }
     
     check_geom <- left_join(province_shp,  check_space, by='province_eng')
     
-    cur_test <- global_moran_perm(check_geom$value,
+    cur_test <- global_moran_perm(check_geom$total_rev_ratio,
                         adapt_neighbours,
-                        dist,
+                        thai_weights,
                         nsim=99) # Number of simulations start from 0
     
     print(print_statement)
     print(cur_test)
-    }
+    
   }
 }
 ```
 
+As we can see, the p-value is smaller than 0.05 for all periods, we can determine that the clustering is also time dependent as we reject the null hypothesis that the total revenue per tourist ratio is randomly spread out and instead accept the alternative hypothesis that the total revenue ratio is clustered.
 
-# Part 4 : Creating the Space-Time Layer For Emerging Hot/Cold Spots 
+# Part 4 : Creating the Space-Time Layer For Emerging Hot/Cold Spots
+
+## Unique Representation of Year - Month
+
+We need at least 12 distinct time periods to showcase spacetime. We can make a unique month-year identifier which needs to be an increasing integer.
+
+We can a 4 digit integer, where the first 2 digits represents the year 19 - 23, and the next 2 digits represent the month (01 - 12). This way we can get an increasing time layer. e.g. 2005 represent the year 2020, month 5 which is May.
 
 ```{r}
-spacetime_thai_year <- spacetime(check_space, 
+thai_df$st_time <- (thai_df$year %% 100) * 100 + thai_df$month  
+```
+
+Now we remove rows and where the value is 0 or the value is NaN. We also need to remove the entire time period where the NaNs are found to ensure a complete spacetime cube.
+
+```{r}
+thai_df_nans  <- thai_df%>% select(-fore_rev_ratio) %>% filter(is.nan(total_rev_ratio))
+
+remove_times <- unique(thai_df_nans$st_time)
+remove_times
+```
+
+These time represent the times where data was missing, we remove the values
+
+```{r}
+# We also need to remove the locations that are not in province shp that were removed due to missing data
+
+unique_prov <- unique(province_shp$province_eng)
+thai_df_spacetime_clean <- thai_df%>% select(-fore_rev_ratio)%>%
+                            filter(!(st_time %in% remove_times)) %>%
+                            filter(province_eng %in% unique_prov)
+
+```
+
+## Make into spacetime object
+
+```{r}
+spacetime_thai <- spacetime(thai_df_spacetime_clean, province_shp,
                                     .loc_col = "province_eng", 
-                                    .time_col= "month_int",
-                                    .geometry = province_shp)
+                                    .time_col= "st_time")
+is_spacetime_cube(spacetime_thai)
 ```
 
 Verify that spacetime object has both geometry and data
 
 ```{r}
-activate(spacetime_thai_year, "data")
+activate(spacetime_thai, "data")
 ```
 
 ```{r}
-activate(spacetime_thai_year, "geometry")
+activate(spacetime_thai, "geometry")
 ```
 
-## Global Moran's I Test
+Now with the timezone set, we can determine whether there are emerging hot/cold zones.
 
+## Determining Emerging Hot and Cold Spots
+
+### Computing Gi\*
+
+First we need compute the Gi statistics for hot and cold spot analysis, by time period
 
 ```{r}
-# TODO : Change to Distance Metrics, Use KnearestNeighbours, and change to centroids
-wm_q <- province_shp %>% 
-        mutate(nb = st_contiguity(geometry),
-                wt = st_weights(nb, style = 'W'), # Standardised over neighbours
-                .before = 1,
-                #zero.viewpolicy = TRUE,
-                allow_zero = TRUE) # There seems to be some islands
-```
-
-Now we conduct Moran's I for every month and every year
-```{r}
-unique_month <- unique(thailand_csv$month)
-unique_year <- unique(thailand_csv$year) 
+hcsa_neighbours <- lapply(adapt_neighbours, function(x) unlist(x))
+thai_nb <- spacetime_thai %>%
+  activate("geometry") %>%
+  mutate(nb = hcsa_neighbours,
+    wt = thai_weights,
+    .before = 1) %>%
+  set_nbs("nb") %>%
+  set_wts("wt")
 ```
 
 ```{r}
+gi_stars_ehsa <- thai_nb %>% 
+  group_by(st_time) %>% 
+  mutate(gi_star = local_gstar_perm(
+    total_rev_ratio, adapt_neighbours, wt)) %>% 
+  tidyr::unnest(gi_star)
 ```
+
+### Mann-Kendall Test
+
+We can then conduct the Mann-Kendall Test, where the null hypothesis is that there is no monotonic trend. The alternate hypothesis is that there is a monotonic trend. Using the Tau values where Tau ranges between -1 and 1, where -1 is a perfectly decreasing series and 1 a perfectly increasing series, we can determine the trend of individual regions.
+
+```{r}
+ehsa_test <- gi_stars_ehsa %>%
+  group_by(province_eng) %>%
+  summarise(mk = list(
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+head(ehsa_test)
+```
+
+### Getting Emerging
+
+Now we can begin searching for the emerging hot and cold spots
+
+```{r}
+set.seed(1234)
+ehsa <- emerging_hotspot_analysis(
+  x = spacetime_thai, 
+  .var = "total_rev_ratio", 
+  k = 1, 
+  nsim = 99
+)
+```
+
+## Plotting EHSA
+
+After this, we can combine the graph with the geometry and see the emerging hot / cold spots. We need to filter by the values where the p-value of the Mann-Kendall test is \< 0.05
+
+```{r}
+thai_ehsa <- province_shp %>%
+  left_join(ehsa,
+            by = join_by(province_eng == location))
+```
+
+Here we filter for significant values
+
+```{r}
+ehsa_sig <- thai_ehsa %>% 
+            filter(p_value < 0.05) # Filter p-value
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(thai_ehsa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(ehsa_sig) +
+  tm_fill("classification") + 
+  tm_borders(alpha = 0.4)
+```
+
+# Part 6 : Interim Conclusion
+
+We can see from conducting both Local and Global Moran's Test that the hotspots of Thailand were both Phuket, Krabi and Bangkok, which are tourims centers as expected. One notable view is that Bangkok is a Hot-Cold spot, which may indicate that tourist who visit Bangkok only stay in Bangkok and not venture out, while tourist who visit the Krabi region may be looking to branch out more. Doing EHSA seems to be quite sporadic as well, which seems to show only spikes in data.
+
+Perhaps more insights could be shown by splitting the view point into Thai vs Foreign Tourists.
+
+# Part 7 : Splitting up Into Distinct Local-vs-Foreign Zones
+
+We can try to split the deter
