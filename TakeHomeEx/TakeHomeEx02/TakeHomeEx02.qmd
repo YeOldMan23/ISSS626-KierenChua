@@ -435,7 +435,7 @@ Now with the timezone set, we can determine whether there are emerging hot/cold 
 
 ## Determining Emerging Hot and Cold Spots
 
-### Computing Gi\*
+### Computing Gi
 
 First we need compute the Gi statistics for hot and cold spot analysis, by time period
 
@@ -488,7 +488,7 @@ ehsa <- emerging_hotspot_analysis(
 
 ## Plotting EHSA
 
-After this, we can combine the graph with the geometry and see the emerging hot / cold spots. We need to filter by the values where the p-value of the Mann-Kendall test is \< 0.05
+After this, we can combine the graph with the geometry and see the emerging hot / cold spots. We need to filter by the values where the p-value of the Mann-Kendall test is < 0.05
 
 ```{r}
 thai_ehsa <- province_shp %>%
@@ -517,8 +517,511 @@ tm_shape(ehsa_sig) +
 
 We can see from conducting both Local and Global Moran's Test that the hotspots of Thailand were both Phuket, Krabi and Bangkok, which are tourims centers as expected. One notable view is that Bangkok is a Hot-Cold spot, which may indicate that tourist who visit Bangkok only stay in Bangkok and not venture out, while tourist who visit the Krabi region may be looking to branch out more. Doing EHSA seems to be quite sporadic as well, which seems to show only spikes in data.
 
-Perhaps more insights could be shown by splitting the view point into Thai vs Foreign Tourists.
+Perhaps more insights could be shown by splitting the view points into 2 specific times zones, pre covid (2019) and during Covid (2020 - 2022). There does not seem to be enough data for Post Covid analysis which takes place 2023 onwards so we will not do that.
 
-# Part 7 : Splitting up Into Distinct Local-vs-Foreign Zones
+# Part 7 : Splitting up Into Distinct Local-vs-Foreign Zones, Pre-Covid vs Covid Time-Zones
 
-We can try to split the deter
+We can try to split the determine the indiviudal effects of the foreign zone and the foreign zone. We can try the foreign side first, pre-covid
+
+## Foreign Revenue Ratio, Pre-Covid
+
+```{r}
+thai_df$st_time <- (thai_df$year %% 100) * 100 + thai_df$month  
+```
+
+Now we remove rows and where the value is 0 or the value is NaN. We also need to remove the entire time period where the NaNs are found to ensure a complete spacetime cube.
+
+```{r}
+thai_df_nans <- thai_df%>% select(-total_rev_ratio, -thai_rev_ratio) %>% filter(is.nan(fore_rev_ratio))
+
+remove_times <- unique(thai_df_nans$st_time)
+remove_times
+```
+
+These time represent the times where data was missing, we remove the values
+
+```{r}
+# We also need to remove the locations that are not in province shp that were removed due to missing data
+
+unique_prov <- unique(province_shp$province_eng)
+thai_df_spacetime_clean <- thai_df%>% select(-total_rev_ratio, -thai_rev_ratio)%>%
+                            filter(!(st_time %in% remove_times)) %>%
+                            filter(year == 2019) %>%
+                            filter(province_eng %in% unique_prov)
+
+```
+
+### Make into spacetime object
+
+```{r}
+spacetime_thai <- spacetime(thai_df_spacetime_clean, province_shp,
+                                    .loc_col = "province_eng", 
+                                    .time_col= "st_time")
+is_spacetime_cube(spacetime_thai)
+```
+
+Verify that spacetime object has both geometry and data
+
+```{r}
+activate(spacetime_thai, "data")
+```
+
+```{r}
+activate(spacetime_thai, "geometry")
+```
+
+Now with the timezone set, we can determine whether there are emerging hot/cold zones.
+
+### Determining Emerging Hot and Cold Spots
+
+#### Computing Gi
+
+First we need compute the Gi statistics for hot and cold spot analysis, by time period
+
+```{r}
+hcsa_neighbours <- lapply(adapt_neighbours, function(x) unlist(x))
+thai_nb <- spacetime_thai %>%
+  activate("geometry") %>%
+  mutate(nb = hcsa_neighbours,
+    wt = thai_weights,
+    .before = 1) %>%
+  set_nbs("nb") %>%
+  set_wts("wt")
+```
+
+```{r}
+gi_stars_ehsa <- thai_nb %>% 
+  group_by(st_time) %>% 
+  mutate(gi_star = local_gstar_perm(
+    fore_rev_ratio, adapt_neighbours, wt)) %>% 
+  tidyr::unnest(gi_star)
+```
+
+#### Mann-Kendall Test
+
+We can then conduct the Mann-Kendall Test, where the null hypothesis is that there is no monotonic trend. The alternate hypothesis is that there is a monotonic trend. Using the Tau values where Tau ranges between -1 and 1, where -1 is a perfectly decreasing series and 1 a perfectly increasing series, we can determine the trend of individual regions.
+
+```{r}
+ehsa_test <- gi_stars_ehsa %>%
+  group_by(province_eng) %>%
+  summarise(mk = list(
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+head(ehsa_test)
+```
+
+#### Getting Emerging
+
+Now we can begin searching for the emerging hot and cold spots
+
+```{r}
+set.seed(1234)
+ehsa <- emerging_hotspot_analysis(
+  x = spacetime_thai, 
+  .var = "fore_rev_ratio", 
+  k = 1, 
+  nsim = 99
+)
+```
+
+### Plotting EHSA
+
+After this, we can combine the graph with the geometry and see the emerging hot / cold spots. We need to filter by the values where the p-value of the Mann-Kendall test is < 0.05
+
+```{r}
+thai_ehsa <- province_shp %>%
+  left_join(ehsa,
+            by = join_by(province_eng == location))
+```
+
+Here we filter for significant values
+
+```{r}
+ehsa_sig <- thai_ehsa %>% 
+            filter(p_value < 0.05) # Filter p-value
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(thai_ehsa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(ehsa_sig) +
+  tm_fill("classification") + 
+  tm_borders(alpha = 0.4)
+```
+
+## Thai Revenue Ratio, Pre Covid
+
+```{r}
+thai_df_nans  <- thai_df%>% select(-fore_rev_ratio, -total_rev_ratio) %>% filter(is.nan(thai_rev_ratio))
+
+remove_times <- unique(thai_df_nans$st_time)
+remove_times
+```
+
+These time represent the times where data was missing, we remove the values
+
+```{r}
+# We also need to remove the locations that are not in province shp that were removed due to missing data
+
+unique_prov <- unique(province_shp$province_eng)
+thai_df_spacetime_clean <- thai_df%>% select(-fore_rev_ratio)%>%
+                            filter(!(st_time %in% remove_times)) %>%
+                            filter(year == 2019) %>%
+                            filter(province_eng %in% unique_prov)
+
+```
+
+### Make into spacetime object
+
+```{r}
+spacetime_thai <- spacetime(thai_df_spacetime_clean, province_shp,
+                                    .loc_col = "province_eng", 
+                                    .time_col= "st_time")
+is_spacetime_cube(spacetime_thai)
+```
+
+Verify that spacetime object has both geometry and data
+
+```{r}
+activate(spacetime_thai, "data")
+```
+
+```{r}
+activate(spacetime_thai, "geometry")
+```
+
+Now with the timezone set, we can determine whether there are emerging hot/cold zones.
+
+### Determining Emerging Hot and Cold Spots
+
+#### Computing Gi
+
+First we need compute the Gi statistics for hot and cold spot analysis, by time period
+
+```{r}
+hcsa_neighbours <- lapply(adapt_neighbours, function(x) unlist(x))
+thai_nb <- spacetime_thai %>%
+  activate("geometry") %>%
+  mutate(nb = hcsa_neighbours,
+    wt = thai_weights,
+    .before = 1) %>%
+  set_nbs("nb") %>%
+  set_wts("wt")
+```
+
+```{r}
+gi_stars_ehsa <- thai_nb %>% 
+  group_by(st_time) %>% 
+  mutate(gi_star = local_gstar_perm(
+    thai_rev_ratio, adapt_neighbours, wt)) %>% 
+  tidyr::unnest(gi_star)
+```
+
+#### Mann-Kendall Test
+
+We can then conduct the Mann-Kendall Test, where the null hypothesis is that there is no monotonic trend. The alternate hypothesis is that there is a monotonic trend. Using the Tau values where Tau ranges between -1 and 1, where -1 is a perfectly decreasing series and 1 a perfectly increasing series, we can determine the trend of individual regions.
+
+```{r}
+ehsa_test <- gi_stars_ehsa %>%
+  group_by(province_eng) %>%
+  summarise(mk = list(
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+head(ehsa_test)
+```
+
+#### Getting Emerging
+
+Now we can begin searching for the emerging hot and cold spots
+
+```{r}
+set.seed(1234)
+ehsa <- emerging_hotspot_analysis(
+  x = spacetime_thai, 
+  .var = "total_rev_ratio", 
+  k = 1, 
+  nsim = 99
+)
+```
+
+### Plotting EHSA
+
+After this, we can combine the graph with the geometry and see the emerging hot / cold spots. We need to filter by the values where the p-value of the Mann-Kendall test is < 0.05
+
+```{r}
+thai_ehsa <- province_shp %>%
+  left_join(ehsa,
+            by = join_by(province_eng == location))
+```
+
+Here we filter for significant values
+
+```{r}
+ehsa_sig <- thai_ehsa %>% 
+            filter(p_value < 0.05) # Filter p-value
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(thai_ehsa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(ehsa_sig) +
+  tm_fill("classification") + 
+  tm_borders(alpha = 0.4)
+```
+
+## Foreign Revenue Ratio, COVID Period
+```{r}
+thai_df_nans  <- thai_df%>% select(-thai_rev_ratio, -total_rev_ratio) %>% filter(is.nan(fore_rev_ratio))
+
+remove_times <- unique(thai_df_nans$st_time)
+remove_times
+```
+
+These time represent the times where data was missing, we remove the values
+
+```{r}
+# We also need to remove the locations that are not in province shp that were removed due to missing data
+
+unique_prov <- unique(province_shp$province_eng)
+thai_df_spacetime_clean <- thai_df%>% select(-fore_rev_ratio)%>%
+                            filter(!(st_time %in% remove_times)) %>%
+                            filter(year %in% c(2020, 2021, 2022)) %>%
+                            filter(province_eng %in% unique_prov)
+
+```
+
+### Make into spacetime object
+
+```{r}
+spacetime_thai <- spacetime(thai_df_spacetime_clean, province_shp,
+                                    .loc_col = "province_eng", 
+                                    .time_col= "st_time")
+is_spacetime_cube(spacetime_thai)
+```
+
+Verify that spacetime object has both geometry and data
+
+```{r}
+activate(spacetime_thai, "data")
+```
+
+```{r}
+activate(spacetime_thai, "geometry")
+```
+
+Now with the timezone set, we can determine whether there are emerging hot/cold zones.
+
+### Determining Emerging Hot and Cold Spots
+
+#### Computing Gi
+
+First we need compute the Gi statistics for hot and cold spot analysis, by time period
+
+```{r}
+hcsa_neighbours <- lapply(adapt_neighbours, function(x) unlist(x))
+thai_nb <- spacetime_thai %>%
+  activate("geometry") %>%
+  mutate(nb = hcsa_neighbours,
+    wt = thai_weights,
+    .before = 1) %>%
+  set_nbs("nb") %>%
+  set_wts("wt")
+```
+
+```{r}
+gi_stars_ehsa <- thai_nb %>% 
+  group_by(st_time) %>% 
+  mutate(gi_star = local_gstar_perm(
+    thai_rev_ratio, adapt_neighbours, wt)) %>% 
+  tidyr::unnest(gi_star)
+```
+
+#### Mann-Kendall Test
+
+We can then conduct the Mann-Kendall Test, where the null hypothesis is that there is no monotonic trend. The alternate hypothesis is that there is a monotonic trend. Using the Tau values where Tau ranges between -1 and 1, where -1 is a perfectly decreasing series and 1 a perfectly increasing series, we can determine the trend of individual regions.
+
+```{r}
+ehsa_test <- gi_stars_ehsa %>%
+  group_by(province_eng) %>%
+  summarise(mk = list(
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+head(ehsa_test)
+```
+
+#### Getting Emerging
+
+Now we can begin searching for the emerging hot and cold spots
+
+```{r}
+set.seed(1234)
+ehsa <- emerging_hotspot_analysis(
+  x = spacetime_thai, 
+  .var = "total_rev_ratio", 
+  k = 1, 
+  nsim = 99
+)
+```
+
+### Plotting EHSA
+
+After this, we can combine the graph with the geometry and see the emerging hot / cold spots. We need to filter by the values where the p-value of the Mann-Kendall test is < 0.05
+
+```{r}
+thai_ehsa <- province_shp %>%
+  left_join(ehsa,
+            by = join_by(province_eng == location))
+```
+
+Here we filter for significant values
+
+```{r}
+ehsa_sig <- thai_ehsa %>% 
+            filter(p_value < 0.05) # Filter p-value
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(thai_ehsa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(ehsa_sig) +
+  tm_fill("classification") + 
+  tm_borders(alpha = 0.4)
+```
+
+
+## Thai Revenue Ratio, COVID
+
+```{r}
+thai_df_nans  <- thai_df%>% select(-fore_rev_ratio, -total_rev_ratio) %>% filter(is.nan(thai_rev_ratio))
+
+remove_times <- unique(thai_df_nans$st_time)
+remove_times
+```
+
+These time represent the times where data was missing, we remove the values
+
+```{r}
+# We also need to remove the locations that are not in province shp that were removed due to missing data
+
+unique_prov <- unique(province_shp$province_eng)
+thai_df_spacetime_clean <- thai_df%>% select(-fore_rev_ratio)%>%
+                            filter(!(st_time %in% remove_times)) %>%
+                            filter(year %in% c(2020, 2021, 2022)) %>%
+                            filter(province_eng %in% unique_prov)
+
+```
+
+### Make into spacetime object
+
+```{r}
+spacetime_thai <- spacetime(thai_df_spacetime_clean, province_shp,
+                                    .loc_col = "province_eng", 
+                                    .time_col= "st_time")
+is_spacetime_cube(spacetime_thai)
+```
+
+Verify that spacetime object has both geometry and data
+
+```{r}
+activate(spacetime_thai, "data")
+```
+
+```{r}
+activate(spacetime_thai, "geometry")
+```
+
+Now with the timezone set, we can determine whether there are emerging hot/cold zones.
+
+### Determining Emerging Hot and Cold Spots
+
+#### Computing Gi
+
+First we need compute the Gi statistics for hot and cold spot analysis, by time period
+
+```{r}
+hcsa_neighbours <- lapply(adapt_neighbours, function(x) unlist(x))
+thai_nb <- spacetime_thai %>%
+  activate("geometry") %>%
+  mutate(nb = hcsa_neighbours,
+    wt = thai_weights,
+    .before = 1) %>%
+  set_nbs("nb") %>%
+  set_wts("wt")
+```
+
+```{r}
+gi_stars_ehsa <- thai_nb %>% 
+  group_by(st_time) %>% 
+  mutate(gi_star = local_gstar_perm(
+    thai_rev_ratio, adapt_neighbours, wt)) %>% 
+  tidyr::unnest(gi_star)
+```
+
+#### Mann-Kendall Test
+
+We can then conduct the Mann-Kendall Test, where the null hypothesis is that there is no monotonic trend. The alternate hypothesis is that there is a monotonic trend. Using the Tau values where Tau ranges between -1 and 1, where -1 is a perfectly decreasing series and 1 a perfectly increasing series, we can determine the trend of individual regions.
+
+```{r}
+ehsa_test <- gi_stars_ehsa %>%
+  group_by(province_eng) %>%
+  summarise(mk = list(
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+head(ehsa_test)
+```
+
+#### Getting Emerging
+
+Now we can begin searching for the emerging hot and cold spots
+
+```{r}
+set.seed(1234)
+ehsa <- emerging_hotspot_analysis(
+  x = spacetime_thai, 
+  .var = "total_rev_ratio", 
+  k = 1, 
+  nsim = 99
+)
+```
+
+### Plotting EHSA
+
+After this, we can combine the graph with the geometry and see the emerging hot / cold spots. We need to filter by the values where the p-value of the Mann-Kendall test is < 0.05
+
+```{r}
+thai_ehsa <- province_shp %>%
+  left_join(ehsa,
+            by = join_by(province_eng == location))
+```
+
+Here we filter for significant values
+
+```{r}
+ehsa_sig <- thai_ehsa %>% 
+            filter(p_value < 0.05) # Filter p-value
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(thai_ehsa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(ehsa_sig) +
+  tm_fill("classification") + 
+  tm_borders(alpha = 0.4)
+```
+# Part 8: Final Conclusion
+
+Looking at the graphs between types of revneue and time zones, we can see that before the CoVID period, the thai tourist expenditure seem to have not much pattern before the pandemic. But during the pandemic, we can see that hotspots appear outside the city regions into neighbouring areas. This could indicate the shift from crowded city centers to the countryside for thai tourist, which is expected. It seems that is not much tourist data in thailand during the CoVID period, as expected since tourist returned to their countries and there was no foreign expenditure during that period.
+
+
