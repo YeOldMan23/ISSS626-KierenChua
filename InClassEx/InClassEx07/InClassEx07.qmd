@@ -1,0 +1,318 @@
+---
+title: "In Class Exercise 7 - Calibrating Hedonic Pricing Model for Private Highrise Property with GWR Method"
+author: "Kieren Chua"
+date: "October 14 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+# Part 1 : Load data and packages
+
+```{r}
+pacman::p_load(olsrr, corrplot, ggpubr, sf, sfdep, GWmodel, tmap, tidyverse, gtsummary, ggstatsplot)
+```
+
+## SG Data
+
+```{r}
+mpsz = st_read(dsn = "data/geospatial", layer = "MP14_SUBZONE_WEB_PL")
+mpsz_svy21 <- st_transform(mpsz, 3414)
+st_crs(mpsz_svy21)
+st_bbox(mpsz_svy21) #view extent
+```
+
+## Condo Data
+
+We shall load in the one from the Hands-On Exercise
+
+```{r}
+condo_resale = read_csv("data/aspatial/Condo_resale_2015.csv")
+glimpse(condo_resale)
+head(condo_resale$LONGITUDE) #see the data in XCOORD column
+head(condo_resale$LATITUDE) #see the data in YCOORD column
+summary(condo_resale)
+```
+
+Convert to point data
+
+```{r}
+condo_resale.sf <- st_as_sf(condo_resale,
+                            coords = c("LONGITUDE", "LATITUDE"),
+                            crs=4326) %>% # Originally in WGS84 Coordinate systemo
+  st_transform(crs=3414) # Singapore coordinate system
+head(condo_resale.sf)
+```
+
+# Part 2 : Exploratoy Data Analysis using ggstatsplot
+
+```{r}
+ggcorrmat(condo_resale[, 5:23])
+```
+
+```{r}
+condo_mlr <- lm(formula = SELLING_PRICE ~ AREA_SQM + AGE    + 
+                  PROX_CBD + PROX_CHILDCARE + PROX_ELDERLYCARE +
+                  PROX_URA_GROWTH_AREA + PROX_HAWKER_MARKET + PROX_KINDERGARTEN + 
+                  PROX_MRT  + PROX_PARK + PROX_PRIMARY_SCH + 
+                  PROX_TOP_PRIMARY_SCH + PROX_SHOPPING_MALL + PROX_SUPERMARKET + 
+                  PROX_BUS_STOP + NO_Of_UNITS + FAMILY_FRIENDLY + FREEHOLD + LEASEHOLD_99YR, 
+                data=condo_resale.sf)
+summary(condo_mlr)
+```
+
+# Part 2 : Model Assessment : olsrr method
+
+##  Regression
+
+```{r}
+ols_regress(condo_mlr)
+```
+
+Need to remove non-significant values, (Sig > 0.05)
+
+## Multicolinearity
+
+```{r}
+# Free hold and leasehold is binary format, so is 
+# dummy variable, wont affect overall calibration
+ols_vif_tol(condo_mlr)
+```
+
+If any VIF values is between 0 and 5 is ok, 5 to 10 may have issue, above 10 definitely have issue and reject using one of the variable that have high VIF.
+
+Binary variables (Yes/No) wont really affect model calibration, but continous values will affect the models.
+
+## Variable Selection
+
+We can run step wise regression so that we can select variables. We add/remove variables one by one so that we can see the effect of each varaible on the R^2 values.
+
+Afterwards it saves the model and choses the variables where the p-value is less than whatever you set
+
+```{r}
+# Step forward, add variables one by one, using p value as criteria for varable selection
+condo_fw_mlr <- ols_step_forward_p(condo_mlr,
+                                    p_val = 0.05,
+                                    details = FALSE)
+```
+
+You can set the details to TRUE if you want to see process
+
+```{r}
+plot(condo_fw_mlr)
+```
+
+```{r}
+ggcoefstats(condo_mlr,
+            sort = "ascending")
+```
+
+## Test for Linearity
+
+We can test for linearity
+
+```{r}
+ols_plot_resid_fit(condo_fw_mlr$model)
+```
+
+```{r}
+ols_plot_resid_hist(condo_fw_mlr$model)
+```
+
+
+
+```{r}
+ols_test_normality(condo_fw_mlr$model)
+```
+
+Reject the p-value > 0.05.
+
+## Testing for Spatial Autocorrelation
+
+```{r}
+mlr_output <- as.data.frame(condo_fw_mlr$model$residuals) %>% 
+                rename("FW_MLR_RES" = 'condo_fw_mlr$model$residuals')
+```
+
+```{r}
+condo_resale.sf <- cbind(condo_resale.sf, mlr_output$FW_MLR_RES) %>%
+                rename('MLR_RES' = 'mlr_output.FW_MLR_RES')
+```
+
+```{r}
+tmap_mode("view")
+tmap_options(check.and.fix = TRUE)
+tm_shape(mpsz) +
+    tmap_options(check.and.fix = TRUE) +
+    tm_polygons(alpha = 0.4) +
+tm_shape(condo_resale.sf) +
+    tm_dots(col = "MLR_RES",
+            alpha = 0.6,
+            style = "quantile")
+tmap_mode("plot")
+
+```
+
+Shows use the price variation between actual vs expected price. Positive values mean that estimated prices is higher than actual price, while negative values mean estimated prices is lower than actual price.
+
+## Moran's I Test
+
+We can test the residuals are spatially independent. If they aren't independent, you know that there are other spatial factors in play.
+
+```{r}
+condo_resale.sf <- condo_resale.sf %>% 
+    mutate(nb = st_knn(geometry, k=6, longlat =FALSE),
+        wt = st_weights(nb, style = 'W'),
+        .before= 1)
+```
+
+```{r}
+global_moran_perm(condo_resale.sf$MLR_RES,
+                condo_resale.sf$nb,
+                condo_resale.sf$wt,
+                alternative = "two.sided",
+                nsim = 99)
+```
+
+Since p value < 0.05, reject null hypothesis that the  residuals are randomly distributed and since moran's I is > 1, there are signs of clustering
+
+# Building Hedonic Pricing models using GWModel
+
+## Fixed bandwidth
+
+```{r}
+bw.fixed <- bw.gwr(formula = SELLING_PRICE ~ AREA_SQM + AGE + PROX_CBD + 
+                     PROX_CHILDCARE + PROX_ELDERLYCARE  + PROX_URA_GROWTH_AREA + 
+                     PROX_MRT   + PROX_PARK + PROX_PRIMARY_SCH + 
+                     PROX_SHOPPING_MALL + PROX_BUS_STOP + NO_Of_UNITS + 
+                     FAMILY_FRIENDLY + FREEHOLD, 
+                   data=condo_resale.sf, 
+                   approach="CV", 
+                   kernel="gaussian", # Have to be gaussian afterwards as well
+                   adaptive=FALSE,  # Fixed distance
+                   longlat=FALSE)
+```
+
+```{r}
+gwr_fixed <- gwr.basic(formula = SELLING_PRICE ~ AREA_SQM + AGE + PROX_CBD + 
+                     PROX_CHILDCARE + PROX_ELDERLYCARE  + PROX_URA_GROWTH_AREA + 
+                     PROX_MRT   + PROX_PARK + PROX_PRIMARY_SCH + 
+                     PROX_SHOPPING_MALL + PROX_BUS_STOP + NO_Of_UNITS + 
+                     FAMILY_FRIENDLY + FREEHOLD, 
+                   data=condo_resale.sf, 
+                   bw=bw.fixed, 
+                   kernel="gaussian", # Have to be gaussian beforewards as well
+                   longlat=FALSE)
+```
+
+```{r}
+gwr_fixed
+```
+
+## Adaptive Bandwidth
+
+```{r}
+bw_adaptive <- bw.gwr(formula = SELLING_PRICE ~ AREA_SQM + AGE  + 
+                        PROX_CBD + PROX_CHILDCARE + PROX_ELDERLYCARE    + 
+                        PROX_URA_GROWTH_AREA + PROX_MRT + PROX_PARK + 
+                        PROX_PRIMARY_SCH + PROX_SHOPPING_MALL   + PROX_BUS_STOP + 
+                        NO_Of_UNITS + FAMILY_FRIENDLY + FREEHOLD, 
+                   data=condo_resale.sf, 
+                   approach="CV", 
+                   kernel="gaussian", # Have to be gaussian afterwards as well
+                   adaptive=TRUE, 
+                   longlat=FALSE)
+
+bw_adaptive
+```
+
+```{r}
+gwr_adaptive <- gwr.basic(formula = SELLING_PRICE ~ AREA_SQM + AGE + PROX_CBD + 
+                     PROX_CHILDCARE + PROX_ELDERLYCARE  + PROX_URA_GROWTH_AREA + 
+                     PROX_MRT   + PROX_PARK + PROX_PRIMARY_SCH + 
+                     PROX_SHOPPING_MALL + PROX_BUS_STOP + NO_Of_UNITS + 
+                     FAMILY_FRIENDLY + FREEHOLD, 
+                   data=condo_resale.sf, 
+                   bw=bw_adaptive, 
+                   adaptive =TRUE,
+                   kernel="gaussian", # Have to be gaussian beforewards as well
+                   longlat=FALSE)
+```
+
+```{r}
+gwr_adaptive
+```
+
+## Visualizing GWR
+
+### Adaptive
+
+```{r}
+gwr_adaptive_output <- as.data.frame(
+    gwr_adaptive$SDF
+) %>% select(-c(2:15))
+```
+
+```{r}
+gwr_sf_adaptive <- cbind(condo_resale.sf,
+                        gwr_adaptive_output)
+```
+adaptive
+```{r}
+glimpse(gwr_sf_adaptive)
+```
+
+```{r}
+summary(gwr_adaptive$SDF$yhat)
+```
+
+```{r}
+tmap_mode("view")
+tmap_options(check.and.fix = TRUE)
+tm_shape(mpsz)+
+  tm_polygons(alpha = 0.1) +
+tm_shape(gwr_sf_adaptive) +  
+  tm_dots(col = "Local_R2",
+          border.col = "gray60",
+          border.lwd = 1) +
+  tm_view(set.zoom.limits = c(11,14))
+tmap_mode("plot")
+```
+
+```{r}
+tmap_options(check.and.fix = TRUE)
+tmap_mode("view")
+AREA_SQM_SE <- tm_shape(mpsz)+
+  tm_polygons(alpha = 0.1) +
+tm_shape(gwr_sf_adaptive) +  
+  tm_dots(col = "AREA_SQM_SE",
+          border.col = "gray60",
+          border.lwd = 1) +
+  tm_view(set.zoom.limits = c(11,14))
+
+AREA_SQM_TV <- tm_shape(mpsz)+
+  tm_polygons(alpha = 0.1) +
+tm_shape(gwr_sf_adaptive) +  
+  tm_dots(col = "AREA_SQM_TV",
+          border.col = "gray60",
+          border.lwd = 1) +
+  tm_view(set.zoom.limits = c(11,14))
+
+tmap_arrange(AREA_SQM_SE, AREA_SQM_TV, 
+             asp=1, ncol=2,
+             sync = TRUE)
+tmap_mode("plot")
+```
+
+```{r}
+tm_shape(mpsz[mpsz$REGION_N=="CENTRAL REGION", ])+
+  tm_polygons()+
+tm_shape(gwr_sf_adaptive) + 
+  tm_bubbles(col = "Local_R2",
+           size = 0.15,
+           border.col = "gray60",
+           border.lwd = 1)
+```

@@ -344,6 +344,9 @@ condo_resale.sf.adaptive.svy21
 ```{r}
 gwr.adaptive.output <- as.data.frame(gwr.adaptive$SDF)
 condo_resale.sf.adaptive <- cbind(condo_resale.res.sf, as.matrix(gwr.adaptive.output))
+
+# Save the file
+write_rds(condo_resale, "data/condo_resale_sf.rds")
 ```
 
 ```{r}
