@@ -9,7 +9,6 @@ execute:
     message: false # don't see the warnings
     freeze: true # Prevent re-render
 html-table-processing: none
-    
 ---
 
 # Part 1 : Load data and packages
@@ -109,7 +108,6 @@ ggarrange(AREA_SQM, AGE, PROX_CBD, PROX_CHILDCARE, PROX_ELDERLYCARE,
           ncol = 3, nrow = 4)
 ```
 
-
 ```{r}
 tmap_mode("view")
 ```
@@ -163,7 +161,7 @@ condo.mlr <- lm(formula = SELLING_PRICE ~ AREA_SQM + AGE    +
 summary(condo.mlr)
 ```
 
-## Preparing Publication Quality Table: olsrr method 
+## Preparing Publication Quality Table: olsrr method
 
 ```{r}
 condo.mlr1 <- lm(formula = SELLING_PRICE ~ AREA_SQM + AGE + 
@@ -175,7 +173,7 @@ condo.mlr1 <- lm(formula = SELLING_PRICE ~ AREA_SQM + AGE +
 ols_regress(condo.mlr1)
 ```
 
-##  Preparing Publication Quality Table: gtsummary method
+## Preparing Publication Quality Table: gtsummary method
 
 ```{r}
 tbl_regression(condo.mlr1, intercept = TRUE)
@@ -191,7 +189,7 @@ tbl_regression(condo.mlr1,
                 p.value, sigma))
 ```
 
-###  Checking for multicolinearity
+### Checking for multicolinearity
 
 ```{r}
 ols_vif_tol(condo.mlr1)
@@ -260,6 +258,7 @@ summary(nb_lw)
 ```{r}
 lm.morantest(condo.mlr1, nb_lw)
 ```
+
 # Part 4 : Building Hedonic Pricing Models using GWmodel
 
 ## Building Fixed Bandwidth GWR Model
@@ -414,5 +413,3 @@ tm_shape(condo_resale.sf.adaptive) +
            border.col = "gray60",
            border.lwd = 1)
 ```
-
-
