@@ -59,6 +59,9 @@ corrplot::corrplot(cor(mdata_nogeo[, 2:17]),
 ```{r}
 train_data <- read_rds("data/train_data.rds")
 test_data <- read_rds("data/test_data.rds")
+
+# RUN Jitter on the data
+
 ```
 
 # Part 2 : Basic Linear Regression Model
@@ -160,6 +163,8 @@ gwr_bw_test_adaptive <- bw.gwr(resale_price ~ floor_area_sqm +
 ```
 
 ```{r}
+# Fix it by using jitter
+
 # gwr_pred <- gwr.predict(formula = resale_price ~
 #                          floor_area_sqm + storey_order +
 #                          remaining_lease_mths + PROX_CBD + 
