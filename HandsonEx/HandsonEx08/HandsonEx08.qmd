@@ -301,3 +301,5 @@ ggplot(data = test_data_p,
            y = resale_price)) +
   geom_point()
 ```
+
+Notes : Roughly 100 predictors, 50 samples per predictor. Can try random forests if the sample size is too small.
