@@ -23,11 +23,15 @@ mdata <- read_rds("data/mdata.rds")
 ```
 
 ## Make train-test split
+
 ```{r}
 set.seed(1234)
-## Remove duplicated data
-mdata <- mdata %>%
-  distinct(st_coordinates(.), .keep_all = TRUE)
+## Jitter Data
+for (i in 1:nrow(mdata)) {
+  coords <- st_coordinates(mdata[i, ])
+  jittered_coords <- coords + runif(n = 1, min = -0.1, max = 0.1)
+  mdata[i,]$geometry <- st_sfc(st_point(c(jittered_coords), dim = "XY"), crs = 3414)
+}
 
 resale_split <- initial_split(mdata, 
                               prop = 6.5/10,)
@@ -59,9 +63,6 @@ corrplot::corrplot(cor(mdata_nogeo[, 2:17]),
 ```{r}
 train_data <- read_rds("data/train_data.rds")
 test_data <- read_rds("data/test_data.rds")
-
-# RUN Jitter on the data
-
 ```
 
 # Part 2 : Basic Linear Regression Model
@@ -77,12 +78,14 @@ price_mlr <- lm(resale_price ~ floor_area_sqm +
                 data=train_data)
 summary(price_mlr)
 ```
+
 # Part 3: Using gwr predictive method
 
 ```{r}
 train_data_sp <- as_Spatial(train_data)
 train_data_sp
 ```
+
 ## Compute Adaptive bandwidth
 
 ```{r}
@@ -139,6 +142,7 @@ gwr_adaptive <- read_rds("data/gwr_adaptive.rds")
 ```{r}
 gwr_adaptive
 ```
+
 ## Conduct GWR on test data
 
 ```{r}
@@ -164,21 +168,23 @@ gwr_bw_test_adaptive <- bw.gwr(resale_price ~ floor_area_sqm +
 
 ```{r}
 # Fix it by using jitter
+#| error: true
 
-# gwr_pred <- gwr.predict(formula = resale_price ~
+
+#gwr_pred <- gwr.predict(formula = resale_price ~
 #                          floor_area_sqm + storey_order +
 #                          remaining_lease_mths + PROX_CBD + 
 #                          PROX_ELDERLYCARE + PROX_HAWKER + 
 #                          PROX_MRT + PROX_PARK + PROX_MALL + 
 #                          PROX_SUPERMARKET + WITHIN_350M_KINDERGARTEN +
 #                          WITHIN_350M_CHILDCARE + 
-#                          WITHIN_1KM_PRISCH, 
+#                         WITHIN_1KM_PRISCH, 
 #                        data=train_data_sp, 
 #                        predictdata = test_data_sp, 
-#                        bw=16, 
+#                        bw=40, 
 #                        kernel = 'gaussian', 
 #                        adaptive=FALSE, 
-#                        longlat = FALSE)
+#                       longlat = FALSE)
 ```
 
 # Part 4 : Preparing coordinates data

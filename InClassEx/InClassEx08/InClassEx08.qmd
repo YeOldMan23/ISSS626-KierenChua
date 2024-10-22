@@ -8,6 +8,7 @@ execute:
     echo: true # See the code output
     message: false # don't see the warnings
     freeze: true # Prevent re-render
+html-table-processing: none
 ---
 
 # Part 1 : Load Data and Packages
@@ -24,6 +25,13 @@ mdata <- read_rds("data/mdata.rds")
 
 ```{r}
 set.seed(1234)
+# Jitter the data
+
+for (i in 1:nrow(mdata)) {
+  coords <- st_coordinates(mdata[i, ])
+  jittered_coords <- coords + runif(n = 1, min = -0.1, max = 0.1)
+  mdata[i,]$geometry <- st_sfc(st_point(c(jittered_coords), dim = "XY"), crs = 3414)
+}
 
 resale_split <- initial_split(mdata, 
                               prop = 6.5/10,)
@@ -37,6 +45,7 @@ ggstatsplot::ggcorrmat(mdata_nogeo[, 2:17])
 ```
 
 # Part 2 : Linear Regression
+
 ```{r}
 price_mlr <- lm(resale_price ~ floor_area_sqm +
                   storey_order + remaining_lease_mths +
@@ -65,6 +74,7 @@ plot(vif) +
 ```
 
 # Part 3 : Predictive Modeling
+
 ```{r}
 bw_adaptive <- bw.gwr(resale_price ~ floor_area_sqm +
                   storey_order + remaining_lease_mths +
@@ -87,8 +97,7 @@ gwr_adaptive <- gwr.basic(formula = resale_price ~
                             PROX_ELDERLYCARE + PROX_HAWKER +
                             PROX_MRT + PROX_PARK + PROX_MALL + 
                             PROX_SUPERMARKET + WITHIN_350M_KINDERGARTEN +
-                            WITHIN_350M_CHILDCARE +
-                            WITHIN_1KM_PRISCH,
+                            WITHIN_350M_CHILDCARE + WITHIN_1KM_PRISCH,
                           data=train_data,
                           bw=bw_adaptive, 
                           kernel = 'gaussian', 
@@ -112,20 +121,21 @@ gwr_bw_test_adaptive <- bw.gwr(resale_price ~ floor_area_sqm +
 ```
 
 ```{r}
-gwr_pred <- gwr.predict(formula = resale_price ~
-                         floor_area_sqm + storey_order +
-                         remaining_lease_mths + PROX_CBD + 
-                         PROX_ELDERLYCARE + PROX_HAWKER + 
-                         PROX_MRT + PROX_PARK + PROX_MALL + 
-                         PROX_SUPERMARKET + WITHIN_350M_KINDERGARTEN +
-                         WITHIN_350M_CHILDCARE + 
-                         WITHIN_1KM_PRISCH, 
-                       data=train_data, 
-                       predictdata = test_data, 
-                       bw=bw_adaptive, 
-                       kernel = 'gaussian', 
-                       adaptive=FALSE, 
-                       longlat = FALSE)
+# Im still getting a singular matrix error despite testing and debugging
+#gwr_pred <- gwr.predict(formula = resale_price ~
+#                         floor_area_sqm + storey_order +
+#                         remaining_lease_mths + PROX_CBD + 
+#                         PROX_ELDERLYCARE + PROX_HAWKER + 
+#                         PROX_MRT + PROX_PARK + PROX_MALL + 
+#                         PROX_SUPERMARKET + WITHIN_350M_KINDERGARTEN +
+#                         WITHIN_350M_CHILDCARE + 
+#                         WITHIN_1KM_PRISCH, 
+#                       data= train_data, 
+#                       predictdata = test_data, 
+#                       bw=bw_adaptive, 
+#                       kernel = 'gaussian', 
+#                       adaptive= FALSE, 
+#                       longlat = FALSE)
 ```
 
 # Part 4 : Spatial-ML Methods
@@ -173,7 +183,7 @@ gwRF_adaptive <- grf(formula = resale_price ~ floor_area_sqm + storey_order +
 ```
 
 ```{r}
-test_data_nogeom <- cbind(test_data, coords_test) %>% st_drop_geomtry()
+test_data_nogeom <- cbind(test_data, coords_test) %>% st_drop_geometry()
 ```
 
 ```{r}
@@ -186,24 +196,50 @@ gwRF_pred <- predict.grf(gwRF_adaptive,
 ```
 
 ## Compare against test data
+
 ```{r}
-GRF_pred <- read_rds("data/")
-GRF_pred_df <- as.data.frame(GRF_pred)
+GRF_pred_df <- as.data.frame(gwRF_pred)
 
 test_data_pred <- cbind(test_data,
                         GRF_pred_df)
 ```
 
 ## Show test prediction over and under predict
-```{r}
 
+```{r}
+rmse(test_data_pred$resale_price, 
+     test_data_pred$gwRF_pred)
+```
+
+```{r}
+ggplot(data = test_data_pred,
+       aes(x = gwRF_pred,
+           y = resale_price)) +
+  geom_point()
 ```
 
 ## Show by location
-```{r}
 
+```{r}
+test_data_pred$residuals <- test_data_pred$gwRF_pred - test_data_pred$resale_price
+st_crs(test_data_pred)
+```
+```{r}
+# Load in the mpsz data
+mpsz = st_read(dsn = "data/geospatial", layer = "MP14_SUBZONE_WEB_PL") %>% st_transform(3414)
 ```
 
+
 ```{r}
+# plot on tmap
+tmap_mode("view")
+tm_shape(mpsz) +
+    tmap_options(check.and.fix = TRUE) +
+    tm_polygons(alpha = 0.4) +
+tm_shape(test_data_pred) +
+    tm_dots(col = "residuals",
+            alpha = 0.6,
+            style = "quantile")
+tmap_mode("plot")
 
 ```
