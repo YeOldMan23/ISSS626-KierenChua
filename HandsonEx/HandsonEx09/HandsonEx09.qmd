@@ -213,7 +213,7 @@ ggplot(data=hexagon_KD2SFCA,
 ## Computing SAM accessibility
 
 ```{r}
-acc_S<- data.frame(ac(hexagons$demand,
+acc_SAM <- data.frame(ac(hexagons$demand,
                          eldercare$capacity,
                          distmat_km, 
                          d0 = 50,
