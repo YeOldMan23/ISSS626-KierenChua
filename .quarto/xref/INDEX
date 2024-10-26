@@ -82,5 +82,14 @@
   },
   "InClassEx/InClassEx08/InClassEx08.qmd": {
     "InClassEx08.html": "9f317e39"
+  },
+  "HandsonEx/HandsonEx09/HandsonEx09.qmd": {
+    "HandsonEx09.html": "4cd800f4"
+  },
+  "HandsonEx/HandsonEx09/data/geospatial/hexagons.qmd": {
+    "hexagons.html": "5511ddf3"
+  },
+  "HandsonEx/HandsonEx09/data/geospatial/ELDERCARE.qmd": {
+    "ELDERCARE.html": "2c969c50"
   }
 }
