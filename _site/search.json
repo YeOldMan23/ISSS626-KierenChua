@@ -1118,5 +1118,47 @@
     "title": "Take Home Exercise 1",
     "section": "",
     "text": "It noted that more accidents happen with large vehicles in the afternoon and nights,while more accidents happen with medium sized vehicles during the morning and evening. This could correspond with rush hours where more people are going to or getting off from work during the morning and evening, where the number of personal vehicles on the road increases, therefore leading to more accidents during those periods\nAnother observation is that the majority of accidents are happening on motorways that are within the city area which are not linked via their train system. (I relied on Google Maps for this, I did not have time to find the appropriate data). If you do a side by side comparison, you can see that across all days and time periods excluding night, accidents do not occur commonly inside the populated zones and only happen on motorways that do not have any nearby adjacent train system. This result may be due to people taking the rail system more, therefore leading to less accidents. This hypothesis is further supported by observing the night time graphs, where accidents clusters begin to appear in the heavily populated regions when the train system is down for the night."
+  },
+  {
+    "objectID": "InClassEx/InClassEx09/InClassEx09.html",
+    "href": "InClassEx/InClassEx09/InClassEx09.html",
+    "title": "In Class Exercise 9",
+    "section": "",
+    "text": "## Can Use r5r package to obtain route data through multulpe channels (Walk, Bus, Car etc.)\npacman::p_load(sf, tidyverse , SpatialAcc, tmap, ggstatsplot)\n\n\nmpsz &lt;- st_read(dsn = \"data/geospatial\", layer = \"MP14_SUBZONE_NO_SEA_PL\") %&gt;% st_transform(3414)\n\nReading layer `MP14_SUBZONE_NO_SEA_PL' from data source \n  `/home/kieren/SMU_MITB/ISSS626/ISSS626-KierenChua/InClassEx/InClassEx09/data/geospatial' \n  using driver `ESRI Shapefile'\nSimple feature collection with 323 features and 15 fields\nGeometry type: MULTIPOLYGON\nDimension:     XY\nBounding box:  xmin: 2667.538 ymin: 15748.72 xmax: 56396.44 ymax: 50256.33\nProjected CRS: SVY21\n\nhexagons &lt;- st_read(dsn = \"data/geospatial\", layer = \"hexagons\") %&gt;% st_transform(3414)\n\nReading layer `hexagons' from data source \n  `/home/kieren/SMU_MITB/ISSS626/ISSS626-KierenChua/InClassEx/InClassEx09/data/geospatial' \n  using driver `ESRI Shapefile'\nSimple feature collection with 3125 features and 6 fields\nGeometry type: POLYGON\nDimension:     XY\nBounding box:  xmin: 2667.538 ymin: 21506.33 xmax: 50010.26 ymax: 50256.33\nProjected CRS: SVY21 / Singapore TM\n\neldercare &lt;- st_read(dsn = \"data/geospatial\", layer = \"ELDERCARE\") %&gt;% st_transform(3414)\n\nReading layer `ELDERCARE' from data source \n  `/home/kieren/SMU_MITB/ISSS626/ISSS626-KierenChua/InClassEx/InClassEx09/data/geospatial' \n  using driver `ESRI Shapefile'\nSimple feature collection with 120 features and 19 fields\nGeometry type: POINT\nDimension:     XY\nBounding box:  xmin: 14481.92 ymin: 28218.43 xmax: 41665.14 ymax: 46804.9\nProjected CRS: SVY21 / Singapore TM\n\n\n\nODMatrix &lt;- read_csv(\"data/aspatial/OD_Matrix.csv\", skip=0)\n\nRows: 375000 Columns: 6\n── Column specification ────────────────────────────────────────────────────────\nDelimiter: \",\"\ndbl (6): origin_id, destination_id, entry_cost, network_cost, exit_cost, tot...\n\nℹ Use `spec()` to retrieve the full column specification for this data.\nℹ Specify the column types or set `show_col_types = FALSE` to quiet this message."
+  },
+  {
+    "objectID": "InClassEx/InClassEx09/data/geospatial/ELDERCARE.html",
+    "href": "InClassEx/InClassEx09/data/geospatial/ELDERCARE.html",
+    "title": "ISSS626-Kieren Chua",
+    "section": "",
+    "text": "&lt;!DOCTYPE qgis PUBLIC ‘http://mrcc.com/qgis.dtd’ ‘SYSTEM’&gt;  ELDERCARE  ENG dataset\n\nELDERCARE\n\n                 0 0     false"
+  },
+  {
+    "objectID": "InClassEx/InClassEx09/data/geospatial/hexagons.html",
+    "href": "InClassEx/InClassEx09/data/geospatial/hexagons.html",
+    "title": "ISSS626-Kieren Chua",
+    "section": "",
+    "text": "&lt;!DOCTYPE qgis PUBLIC ‘http://mrcc.com/qgis.dtd’ ‘SYSTEM’&gt;     dataset\n\n\n                 0 0     false"
+  },
+  {
+    "objectID": "InClassEx/InClassEx09/InClassEx09.html#supply",
+    "href": "InClassEx/InClassEx09/InClassEx09.html#supply",
+    "title": "In Class Exercise 9",
+    "section": "Supply",
+    "text": "Supply\n\neldercare &lt;- eldercare %&gt;% \n            select(fid, ADDRESSPOS) %&gt;% \n            mutate(capacity = 100)"
+  },
+  {
+    "objectID": "InClassEx/InClassEx09/InClassEx09.html#demand",
+    "href": "InClassEx/InClassEx09/InClassEx09.html#demand",
+    "title": "In Class Exercise 9",
+    "section": "Demand",
+    "text": "Demand\n\nhexagons &lt;- hexagons %&gt;% select(fid) %&gt;% mutate(demand = 100)"
+  },
+  {
+    "objectID": "InClassEx/InClassEx09/InClassEx09.html#od-matrix",
+    "href": "InClassEx/InClassEx09/InClassEx09.html#od-matrix",
+    "title": "In Class Exercise 9",
+    "section": "OD Matrix",
+    "text": "OD Matrix\n\ndistmat &lt;- ODMatrix %&gt;% \n        select(origin_id, destination_id, total_cost) %&gt;% \n        spread(destination_id, total_cost) %&gt;% # Like a reshape, using destination id as a key\n        select(c(-c('origin_id')))\n\n# Also can use pivot_longer() function\n\n\ndistmat_km &lt;- as.matrix(distmat/1000)\n\n\nacc_Hansen &lt;- data.frame(ac(hexagon$demand,\n                eldercare$capacity,\n                distmat_km,\n                power=2,\n                family=\"Hansen\"))\n\n\ncolnames(acc_Hansen) &lt;- \"accHansen\"\n\nacc_Hansen &lt;- as_tibble(acc_Hansen)\nhexagon_Hansen &lt;- bind_cols(hexagons, acc_Hansen)\n\nmapex &lt;- st_bbox(hexagons)\n\n\ntmap_mode(\"plot\")\n\ntmap mode set to plotting\n\ntm_shape(hexagon_Hansen,\n         bbox = mapex) + \n  tm_fill(col = \"accHansen\",\n          n = 10,\n          style = \"quantile\",\n          border.col = \"black\",\n          border.lwd = 1) +\ntm_shape(eldercare) +\n  tm_symbols(size = 0.1) +\n  tm_layout(main.title = \"Accessibility to eldercare: Hansen method\",\n            main.title.position = \"center\",\n            main.title.size = 2,\n            legend.outside = FALSE,\n            legend.height = 0.45, \n            legend.width = 3.0,\n            legend.format = list(digits = 6),\n            legend.position = c(\"right\", \"top\"),\n            frame = TRUE) +\n  tm_compass(type=\"8star\", size = 2) +\n  tm_scale_bar(width = 0.15) +\n  tm_grid(lwd = 0.1, alpha = 0.5)\n\n\n\n\n\n\n\n\n\nhexagon_Hansen &lt;- st_join(hexagon_Hansen, \n                        mpsz,\n                        join = st_intersects)\n\n\nggbetweenstats(\n    data = hexagon_Hansen,\n    x = REGION_N,\n    y = accHansen,\n    type = 'p' # Parametric test, compare means\n    # type = 'np' # Non Parametrics, compare medians\n    # type = '' # Robust Method, remove outliers, compare means\n    # type = '' # Bayes Method, mutli permutation\n)"
   }
 ]

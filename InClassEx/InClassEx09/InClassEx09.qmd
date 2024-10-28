@@ -1,0 +1,120 @@
+---
+title: "In Class Exercise 9"
+author: "Kieren Chua"
+date: "October 28 2024"
+date-modified: "October 21 2024"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+html-table-processing: none
+---
+
+# Part 1 : Read Packages and Data
+
+```{r}
+## Can Use r5r package to obtain route data through multulpe channels (Walk, Bus, Car etc.)
+pacman::p_load(sf, tidyverse , SpatialAcc, tmap, ggstatsplot)
+```
+
+```{r}
+mpsz <- st_read(dsn = "data/geospatial", layer = "MP14_SUBZONE_NO_SEA_PL") %>% st_transform(3414)
+hexagons <- st_read(dsn = "data/geospatial", layer = "hexagons") %>% st_transform(3414)
+eldercare <- st_read(dsn = "data/geospatial", layer = "ELDERCARE") %>% st_transform(3414)
+```
+
+```{r}
+ODMatrix <- read_csv("data/aspatial/OD_Matrix.csv", skip=0)
+```
+
+# Part 2 : Generate Supply and Demand
+
+## Supply
+
+```{r}
+eldercare <- eldercare %>% 
+            select(fid, ADDRESSPOS) %>% 
+            mutate(capacity = 100)
+```
+
+## Demand
+
+```{r}
+hexagons <- hexagons %>% select(fid) %>% mutate(demand = 100)
+```
+
+## OD Matrix
+
+```{r}
+distmat <- ODMatrix %>% 
+        select(origin_id, destination_id, total_cost) %>% 
+        spread(destination_id, total_cost) %>% # Like a reshape, using destination id as a key
+        select(c(-c('origin_id')))
+
+# Also can use pivot_longer() function
+```
+
+```{r}
+distmat_km <- as.matrix(distmat/1000)
+```
+
+```{r}
+acc_Hansen <- data.frame(ac(hexagon$demand,
+                eldercare$capacity,
+                distmat_km,
+                power=2,
+                family="Hansen"))
+```
+
+```{r}
+colnames(acc_Hansen) <- "accHansen"
+
+acc_Hansen <- as_tibble(acc_Hansen)
+hexagon_Hansen <- bind_cols(hexagons, acc_Hansen)
+
+mapex <- st_bbox(hexagons)
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(hexagon_Hansen,
+         bbox = mapex) + 
+  tm_fill(col = "accHansen",
+          n = 10,
+          style = "quantile",
+          border.col = "black",
+          border.lwd = 1) +
+tm_shape(eldercare) +
+  tm_symbols(size = 0.1) +
+  tm_layout(main.title = "Accessibility to eldercare: Hansen method",
+            main.title.position = "center",
+            main.title.size = 2,
+            legend.outside = FALSE,
+            legend.height = 0.45, 
+            legend.width = 3.0,
+            legend.format = list(digits = 6),
+            legend.position = c("right", "top"),
+            frame = TRUE) +
+  tm_compass(type="8star", size = 2) +
+  tm_scale_bar(width = 0.15) +
+  tm_grid(lwd = 0.1, alpha = 0.5)
+```
+
+```{r}
+hexagon_Hansen <- st_join(hexagon_Hansen, 
+                        mpsz,
+                        join = st_intersects)
+```
+
+```{r}
+ggbetweenstats(
+    data = hexagon_Hansen,
+    x = REGION_N,
+    y = accHansen,
+    type = 'p' # Parametric test, compare means
+    # type = 'np' # Non Parametrics, compare medians
+    # type = '' # Robust Method, remove outliers, compare means
+    # type = '' # Bayes Method, mutli permutation
+)
+```
