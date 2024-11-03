@@ -30,6 +30,10 @@ website:
             href: HandsonEx/HandsonEx08/HandsonEx08.qmd
           - text: Exercise 9
             href: HandsonEx/HandsonEx09/HandsonEx09.qmd
+          - text: Exercise 10a
+            href: HandsonEx/HandsonEx10/HandsonEx10a.qmd
+          - text: Exercise 10b
+            href: HandsonEx/HandsonEx10/HandsonEx10b.qmd
       - text: In Class Exercise
         menu:
           - text: In Class Exercise 1
@@ -54,6 +58,8 @@ website:
             href: TakeHomeEx\TakeHomeEx01\TakeHomeEx01.qmd
           - text: Take Home Exercise 2
             href: TakeHomeEx\TakeHomeEx02\TakeHomeEx02.qmd
+          - text: Take Home Exercise 3
+            href: TakeHomeEx\TakeHomeEx03\TakeHomeEx03.qmd
 format:
   html:
     theme: cosmo

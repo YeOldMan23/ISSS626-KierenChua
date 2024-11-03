@@ -1,0 +1,586 @@
+---
+title: "Take Home Exercise 3"
+author: "Kieren Chua"
+date: "November 1 2024"
+date-modified: "last_modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+# Part 1 : Data And Packages
+
+## Packages
+
+```{r}
+pacman::p_load(sf, spdep, GWmodel, SpatialML, 
+               tmap, rsample, Metrics, tidyverse,
+               knitr, kableExtra, jsonlite)
+```
+
+## Data
+
+We can get the lat long data from the previous output
+
+```{r}
+location_data <- read_rds("data/processed_data/coords.rds")
+
+resale_data <- read_csv("data/resale.csv")
+
+resale_tidy <- resale_data %>%
+  mutate(address = paste(block,street_name)) %>%
+  mutate(remaining_lease_yr = as.integer(
+    str_sub(remaining_lease, 0, 2)))%>%
+  mutate(remaining_lease_mth = as.integer(
+    str_sub(remaining_lease, 9, 11)))
+```
+
+We also got data from the other required decision parameters, which are :
+
+**Structural factors**
+
+1.  Area of the unit
+2.  Floor level Remaining
+3.  lease
+4.  Age of the unit
+
+**Locational factors**
+
+1.  Proxomity to CBD
+2.  Proximity to eldercare
+3.  Proximity to foodcourt/hawker centres
+4.  Proximity to MRT
+5.  Proximity to park
+6.  Proximity to good primary school ( All schools are good schools lol)
+7.  Proximity to shopping mall
+8.  Proximity to supermarket
+9.  Numbers of kindergartens within 350m
+10.  Numbers of childcare centres within 350m
+11. Numbers of bus stop within 350m
+12. Numbers of primary school within 1km
+
+```{r}
+CBD_lat_long <- c(1.287953, 103.851784) # Taken from https://www.latlong.net/place/downtown-core-singapore-20616.html
+
+CBD_svy21 <- st_sfc(st_point(c(103.851784, 1.287953)), 
+                    crs = 4326) %>%
+                    st_transform(3414)
+eldercare_data <- st_read(dsn = "data/EldercareServicesSHP", 
+                          layer = "ELDERCARE") %>% st_transform(3414)
+foodcourt_data <- st_read("data/HawkerCentresGEOJSON.geojson") %>% st_transform(3414)
+MRT_data <- st_read("data/LTAMRTStationExitGEOJSON.geojson") %>% st_transform(3414)
+park_data <- st_read("data/Parks.kml") %>% st_transform(3414)
+primarySchool_data <- st_read("data/LTASchoolZone.geojson") %>% st_transform(3414)
+mall_data <- st_read(dsn = "data/MP14SDCPPWPLANMallandPromenadeSHP", 
+                     layer="G_MP14_PKWB_MALL_PROM_PL") %>% st_transform(3414)
+supermarket_data <- st_read("data/SupermarketsGEOJSON.geojson") %>% st_transform(3414)
+kindergarten_data <- st_read("data/Kindergartens.geojson") %>% st_transform(3414)
+childcare_data <- st_read("data/ChildCareServices.geojson") %>% st_transform(3414)
+busstop_data <- st_read(dsn = "data/BusStopLocation_Jul2024",
+                        layer= "BusStop") %>% st_transform(3414)
+```
+
+
+# Part 2 : Processing the data
+
+Now we need to add all the data to the dataframe
+
+## Locations of HDB
+
+We can use the location data and join by postal code
+
+```{r}
+resale_tidy_loc <- left_join(resale_tidy, location_data, by = "address")
+resale_tidy_clean <- resale_tidy_loc %>% 
+                filter(!is.na(postal))
+
+# Then we convert the lat long into SVY21
+resale_sf <- st_as_sf(resale_tidy_clean, 
+                      coords = c("longitude", "latitude"),
+                      crs = 4326) %>%
+            st_transform(3414)
+
+# Handle the NA in the lease months
+resale_sf$remaining_lease_mth[is.na(resale_sf$remaining_lease_mth)] <- 0
+```
+
+We also need to jitter the points so that the points do not share the same coordinates
+
+```{r}
+resale_sf$geometry <- st_jitter(resale_sf$geometry, amount = 0.1)
+```
+
+## Unit Age 
+
+```{r}
+resale_sf$unit_age <- 99 - resale_sf$remaining_lease_yr
+```
+
+## Proximity to CBD
+
+We can compare all locations to the single CBD coordinate and output a distance
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, CBD_svy21)
+
+resale_sf$PROX_CBD <- apply(distance_matrix, 1, min)
+```
+
+## Proximity to Eldercare
+
+In this case we can find the closest elder-care to the HDB unit
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, eldercare_data$geometry)
+
+resale_sf$PROX_ELDER <- apply(distance_matrix, 1, min)
+```
+
+## Proximity to Hawker Center
+
+We do the same thing here
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, foodcourt_data$geometry)
+
+resale_sf$PROX_HAWKER <- apply(distance_matrix, 1, min)
+```
+
+## Proximity to MRT
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, MRT_data$geometry)
+
+resale_sf$PROX_MRT <- apply(distance_matrix, 1, min)
+```
+
+## Proximity to Park
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, park_data$geometry)
+
+resale_sf$PROX_PARK <- apply(distance_matrix, 1, min)
+```
+
+## Proximity to Primary School
+
+We need to get the center of the primary school to compare against centroid. Need to drop the z value
+
+```{r}
+primarySchool_data$geometry <- st_zm(primarySchool_data$geometry)
+primarySchool_data$centroid <- st_centroid(primarySchool_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, primarySchool_data$centroid)
+
+resale_sf$PROX_PRIM <- apply(distance_matrix, 1, min)
+```
+
+## Proximity to Shopping Mall
+
+Same for the shopping mall
+
+```{r}
+mall_data$centroid <- st_centroid(mall_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, mall_data$centroid)
+
+resale_sf$PROX_MALL <- apply(distance_matrix, 1, min)
+```
+
+## Proximity to Supermarket
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, supermarket_data$geometry)
+
+resale_sf$PROX_SPMK <- apply(distance_matrix, 1, min)
+```
+
+## Number of Kindergartens within 350m
+
+To calculate the number of kindergartens within 350m of the HBD, we need to have a 350m search radius around each location, then count the number of kindergartens within
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, kindergarten_data$geometry)
+
+count_within_350m <- apply(distance_matrix, 1, function(distances) {
+  sum(distances <= 350)  # Count points within 350 meters
+})
+
+resale_sf$KIND_350 <- count_within_350m
+
+```
+
+## Number of Childcares within 350m
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, st_zm(childcare_data$geometry))
+
+count_within_350m <- apply(distance_matrix, 1, function(distances) {
+  sum(distances <= 350)  # Count points within 350 meters
+})
+
+resale_sf$CHILD_350 <- count_within_350m
+```
+
+## Number of Bus-Stops within 350m
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, busstop_data$geometry)
+
+count_within_350m <- apply(distance_matrix, 1, function(distances) {
+  sum(distances <= 350)  # Count points within 350 meters
+})
+
+resale_sf$BUS_350 <- count_within_350m
+```
+
+## Number of Primary School within 1000m
+
+```{r}
+distance_matrix <- st_distance(resale_sf$geometry, primarySchool_data$centroid)
+
+count_within_1km <- apply(distance_matrix, 1, function(distances) {
+  sum(distances <= 1000)  # Count points within 350 meters
+})
+
+resale_sf$PRI_1K <- count_within_1km
+```
+
+## Saving the data
+
+Now we can save the data for future purposes.
+
+```{r}
+write_rds(resale_sf, "data/resale_sf_processed.rds")
+```
+
+# Part 3 : Shrinking the search space
+
+## Read the data
+
+```{r}
+cleaned_resale_sf <- read_rds("data/resale_sf_processed.rds")
+cleaned_resale_no_geom <- cleaned_resale_sf %>% st_drop_geometry()
+```
+
+Because there is too much data, we will need to reduce the size of inspection. First we shall determine the types of flats available.
+
+```{r}
+unique_flat_types <- unique(cleaned_resale_sf$flat_type)
+unique_flat_types
+```
+
+We also want to see the types of flats that are available 
+
+```{r}
+unique_flat_models <- unique(cleaned_resale_sf$flat_model)
+unique_flat_models
+```
+
+To have more focus on the data, we shall focus on the more expensive apartments vs the exercise given to us. To get an idea of what is expensive, we will need to see the spread of flat prices
+
+```{r}
+boxplot(cleaned_resale_sf$resale_price, main="Box plot of resale prices", ylab="Resale Price")
+```
+
+We can see there are many outliers of data from the boxplot in the upper half. To maintain a large amount of data, we shall use the top 25% of data as the search space 
+
+```{r}
+sale_quantiles <- quantile(cleaned_resale_sf$resale_price)
+
+sale_quantiles[4]
+```
+
+So the upper quantile is 629 000 dollars, we shall round that down to 600 000 and then only consider rooms above that price.
+
+```{r}
+cleaned_resale_sf_cut <- cleaned_resale_sf %>% 
+                          filter(resale_price >= 6e5)
+cleaned_resale_sf_cut_no_geom <- cleaned_resale_sf_cut %>%
+                                  st_drop_geometry()
+```
+
+This leaves us with over 10000 data samples, which should be enough for us.
+
+# Part 4 : Computing Correlation Matrix
+
+## Bin the data 
+
+We need to bin some of the variables so that they make integers
+
+### Storeys
+
+```{r}
+unqiue_storey <- unique(cleaned_resale_sf_cut_no_geom$storey_range)
+
+storey_mapping <- setNames(seq_along(unqiue_storey), unqiue_storey)
+
+cleaned_resale_sf_cut_no_geom$storey_range_bin <- storey_mapping[cleaned_resale_sf_cut_no_geom$storey_range]
+cleaned_resale_sf_cut$storey_range_bin <- storey_mapping[cleaned_resale_sf_cut$storey_range]
+```
+
+## Plotting the graph
+
+We are not sure if all the variables are correlated, so we can build a correlation matrix to see if we need to exclude any variables
+
+```{r}
+required_cols <- c(7, 9, 13, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29)
+corrplot::corrplot(cor(cleaned_resale_sf_cut_no_geom[, required_cols]), 
+                   diag = FALSE, 
+                   order = "AOE",
+                   tl.pos = "td", 
+                   tl.cex = 0.5, 
+                   method = "number", 
+                   type = "upper")
+```
+
+We can see that lease commence date and lease remaining year has a correlation value of more than 0.8, so we can remove them from the choices
+
+## Variance Inflation Factor
+
+We also can check the Variance Inflation Factor to see if there are any variables above a 5
+
+### Train-Test Split
+
+First we need to do a train test split for any model training. Split shall be 65 - 35.
+
+```{r}
+
+set.seed(1234)
+resale_split <- initial_split(cleaned_resale_sf_cut, 
+                              prop = 6.5/10,)
+# We use a 80/20 split since we have more than 40000 samples of data
+train_data <- training(resale_split)
+
+```
+
+### Generating simple LM Model
+
+```{r}
+price_mlr <- lm(resale_price ~ floor_area_sqm + storey_range_bin + remaining_lease_yr +
+                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+                  PROX_MRT + PROX_PARK + PROX_MALL +
+                  PROX_SPMK + KIND_350 +
+                  CHILD_350 + BUS_350 +
+                  PRI_1K,
+                data=train_data)
+```
+
+```{r}
+vif <- performance::check_collinearity(price_mlr)
+kable(vif, 
+      caption = "Variance Inflation Factor (VIF) Results") %>%
+  kable_styling(font_size = 18) 
+```
+
+We can also plot this out for better visualization
+
+```{r}
+plot(vif) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+We can see that all the variables have a variables that is below a 5, so we can use all of them.
+
+# Part 5 : Generating Geographically Weighted Predictive Models
+
+## Convert to Spatial Datframe
+
+```{r}
+train_data_sp <- as_Spatial(train_data)
+```
+
+## Get adaptive bandwidth 
+
+```{r}
+bw_adaptive <- bw.gwr(resale_price ~ floor_area_sqm +
+                  storey_range_bin + remaining_lease_yr +
+                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+                  PROX_MRT + PROX_PARK + PROX_MALL + 
+                  PROX_SPMK + KIND_350 +
+                  CHILD_350 + BUS_350 +
+                  PRI_1K,
+                  data=train_data_sp,
+                  approach="CV",
+                  kernel="gaussian",
+                  adaptive=TRUE,
+                  longlat=FALSE)
+```
+
+We will also save it for the future
+
+```{r}
+write_rds(bw_adaptive, "data/model/bw_adaptive.rds")
+```
+
+```{r}
+bw_adaptive <- read_rds("data/model/bw_adaptive.rds")
+```
+
+## Make the model
+
+Now we will make the adaptive GWR model
+
+```{r}
+gwr_adaptive <- gwr.basic(formula = resale_price ~ floor_area_sqm +
+                  storey_range_bin + remaining_lease_yr +
+                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+                  PROX_MRT + PROX_PARK + PROX_MALL + 
+                  PROX_SPMK + KIND_350 +
+                  CHILD_350 + BUS_350 +
+                  PRI_1K,
+                          data=train_data_sp,
+                          bw=bw_adaptive, 
+                          kernel = 'gaussian', 
+                          adaptive=TRUE,
+                          longlat = FALSE)
+
+```
+
+Save a copy
+
+```{r}
+write_rds(gwr_adaptive, "data/model/gwr_adaptive.rds")
+```
+
+## Reading the model
+
+```{r}
+gwr_adaptive <- read_rds("data/model/gwr_adaptive.rds")
+```
+
+```{r}
+gwr_adaptive
+```
+
+From the results we can see that proximity to elder-care, number of child-cares and number of kindergartens seem to be insignificant to the resale price of the location. This could probably signify that these metrics may not be in consideration when people are making a purchase. We can try to remove its from future training.
+
+## Computer Test Data Adaptive Bandwidth
+
+```{r}
+test_data <- testing(resale_split)
+test_data_sp <- as_Spatial(test_data)
+```
+
+
+```{r}
+gwr_bw_test_adaptive <- bw.gwr(resale_price ~ floor_area_sqm +
+                  storey_range_bin + remaining_lease_yr +
+                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+                  PROX_MRT + PROX_PARK + PROX_MALL + 
+                  PROX_SPMK + KIND_350 +
+                  CHILD_350 + BUS_350 +
+                  PRI_1K,
+                  data=test_data_sp,
+                  approach="CV",
+                  kernel="gaussian",
+                  adaptive=TRUE,
+                  longlat=FALSE)
+```
+
+Now we can run prediction on the test dataset
+
+## Running Predictions on the test data
+
+```{r}
+st_crs(train_data_sp)
+```
+
+
+```{r}
+gwr_pred <- gwr.predict(formula = resale_price ~ floor_area_sqm +
+                  storey_range_bin + remaining_lease_yr +
+                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+                  PROX_MRT + PROX_PARK + PROX_MALL + 
+                  PROX_SPMK + KIND_350 +
+                  CHILD_350 + BUS_350 +
+                  PRI_1K, 
+                  data= train_data_sp, 
+                  predictdata = test_data_sp, 
+                  bw=bw_adaptive, 
+                  kernel = 'gaussian', 
+                  adaptive= TRUE, 
+                  longlat = FALSE)
+```
+
+# Part 6 : Generating Random Forest Model
+
+Now we can move on to creating the random forest model
+
+```{r}
+coords_train <- st_coordinates(train_data)
+coords_test <- st_coordinates(test_data)
+train_data_nogeom <- train_data %>%
+  st_drop_geometry()
+```
+
+After preparing the data, we can train the model below 
+
+## Basic Random Forest
+
+```{r}
+set.seed(1234)
+rf <- ranger(resale_price ~ floor_area_sqm +
+                  storey_range_bin + remaining_lease_yr +
+                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+                  PROX_MRT + PROX_PARK + PROX_MALL + 
+                  PROX_SPMK + KIND_350 +
+                  CHILD_350 + BUS_350 +
+                  PRI_1K,
+             data=train_data_nogeom)
+```
+
+We can view the model output below
+
+```{r}
+rf
+```
+
+## Geographically weighted Random Forest
+
+```{r}
+set.seed(1234)
+gwRF_adaptive <- grf(formula = resale_price ~ floor_area_sqm +
+                  storey_range_bin + remaining_lease_yr +
+                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+                  PROX_MRT + PROX_PARK + PROX_MALL + 
+                  PROX_SPMK + KIND_350 +
+                  CHILD_350 + BUS_350 +
+                  PRI_1K,
+                     dframe=train_data_nogeom, 
+                     bw=bw_adaptive,
+                     kernel="adaptive",
+                     coords=coords_train)
+```
+
+We can then save the model for future use
+
+```{r}
+write_rds(gwRF_adaptive, "data/model/gwRF_adaptive.rds")
+```
+
+We then re-read it, mostly for running purposes
+
+```{r}
+gwRF_adaptive <- read_rds("data/model/gwRF_adaptive.rds")
+```
+
+## Predicting with test data
+
+```{r}
+test_data_nogeom <- cbind(
+  test_data, coords_test) %>%
+  st_drop_geometry()
+```
+
+```{r}
+gwRF_pred <- predict.grf(gwRF_adaptive, 
+                           test_data_nogeom, 
+                           x.var.name="X",
+                           y.var.name="Y", 
+                           local.w=1,
+                           global.w=0)
+```
+
+
+

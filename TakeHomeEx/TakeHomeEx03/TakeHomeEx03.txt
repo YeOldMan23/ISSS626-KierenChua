@@ -1,0 +1,252 @@
+---
+title: "Take Home Exercise 2"
+author: "Kieren Chua"
+date: "November 1 2024"
+date-modified: "last-modified"
+execute: 
+    eval: true # evaulate the code first
+    echo: true # See the code output
+    message: false # don't see the warnings
+    freeze: true # Prevent re-render
+---
+
+According to Wikipedia, financial inclusion is the availability and equality of opportunities to access financial services. It refers to processes by which individuals and businesses can access appropriate, affordable, and timely financial products and services - which include banking, loan, equity, and insurance products. It provides paths to enhance inclusiveness in economic growth by enabling the unbanked population to access the means for savings, investment, and insurance towards improving household income and reducing income inequality.
+
+The 3 key words are **appropiate**, **afforable** and **timely**.
+
+# Part 1 : Reading and accessing the data
+
+```{r}
+# Import all necessary packages
+pacman::p_load(olsrr, 
+               corrplot,
+               ggpubr, 
+               sf, 
+               sfdep,
+               GWmodel, 
+               tmap, 
+               tidyverse, 
+               gtsummary, 
+               ggstatsplot,
+               SpatialAcc,
+               readxl,
+               stringr,
+               progress)
+```
+
+## Reading the Boundary Data
+
+```{r}
+tanzania_dist_shp <- st_read(dsn="data/unprocessed/geospatial", layer="geoBoundaries-TZA-ADM2") %>%
+                select(shapeName, geometry) %>%
+                rename(dist_name = shapeName)
+
+tanzania_ward_shp <- st_read(dsn="data/unprocessed/geospatial", layer="geoBoundaries-TZA-ADM3") %>%
+                      select(shapeName, geometry) %>%
+                      rename(ward_name = shapeName)
+
+```
+
+Since the study is at district level, we need to map the ward to the district
+
+```{r}
+intersections <- st_intersection(tanzania_ward_shp, tanzania_dist_shp)
+intersections$area <- st_area(intersections)
+```
+
+From the intersection, choose the largest intersection. Note that there can be only one district per ward.
+
+```{r}
+# Map the ward to the district with the largest intersections 
+largest_intersections <- intersections %>%
+  group_by(dist_name, ward_name) %>%
+  summarize(largest_area = max(area), .groups = 'drop')
+```
+
+```{r}
+largest_intersections <- largest_intersections %>%
+                        select(dist_name, ward_name)
+
+li_df <- data.frame(largest_intersections) %>% select(dist_name, ward_name)
+```
+
+Now that we have the largest intersections, we can now combine them back to the ward shp file so that we can map each person's survey to a physical location.
+
+```{r}
+tanzania_ward_mapped <- tanzania_ward_shp %>%
+                        left_join(li_df, by = "ward_name")
+                        
+```
+
+## Reading the xl data
+
+```{r}
+survey_q <- read_xlsx("data/unprocessed/aspatial/Individual Main Data_Datamap.xlsx", 
+                         sheet = 1) # Survey Questions
+survey_a <- read_xlsx("data/unprocessed/aspatial/Individual Main Data_Datamap.xlsx", 
+                         sheet = 2) # Survey Answers
+
+respondent_ans <- read_csv("data/unprocessed/aspatial/FinScope Tanzania 2023_Individual Main Data_FINAL.csv")
+
+class(respondent_ans)
+```
+We then get the centroid of each ward from the district
+```{r}
+tanzania_ward_mapped$centroid <- st_centroid(tanzania_ward_mapped$geometry)
+```
+
+After this we assign each respondent a centroid to represent the location of the survey
+
+```{r}
+# We also can add a centroid to the districts and then jitter
+
+
+respondent_ans_w_centroid <-left_join(respondent_ans, data.frame(tanzania_ward_mapped), by="ward_name") %>% 
+                            mutate(centroid = st_centroid(geometry)) %>%
+                            select(-geometry) 
+# Convert to sf object
+respondent_ans_w_centroid_sf <- respondent_ans_w_centroid %>% st_as_sf(crs=4326)
+class(respondent_ans_w_centroid_sf)
+```
+
+However, since multiple people come from the same district, we will need to jitter the points. It is ok to jitter outside the geometry since we will be mapping to the district centroid in the future.
+
+```{r}
+set.seed(1234)
+respondent_ans_w_centroid_sf$centroid <- st_jitter(respondent_ans_w_centroid_sf$centroid, amount=0.1)
+```
+
+
+```{r}
+tmap_mode("plot")
+tm_shape(tanzania_shp) +  
+  tm_polygons() + 
+tm_shape(respondent_ans_w_centroid_sf %>% select(dist_name, centroid)) +
+  tm_dots(col="dist_name")
+tmap_mode("plot")
+```
+This jitter shouldbe sufficient, 
+
+The *survey_a* variable has few blanks due to the formatting of the excel, so we have to amend it so that each option can match a question number for later filtering.
+
+```{r}
+survey_a <- survey_a %>% fill(`Variable Values`, .direction = "down")
+```
+
+## Saving the data
+
+Now that we have processed the data, we can save it into a .rds file so that we do not have the run it anymore
+
+```{r}
+
+```
+
+# Part 2 : Exploratory Data Analysis
+
+## Where do Tanzanians Keep their Money
+
+First we need to find out what are the type of financial services that the Tanzanians have access to in the first place, before determining geographic accessibility.
+
+```{r}
+where_saved_qs <- survey_q %>%
+                  filter(grepl("saved", `...3`))
+where_saved_qs
+```
+
+So we can see that there are multiple locations where people keep their money. To keep it within the scope of appropriate, we shall exclude *Give to employer*, *Save with another community group or church*, *Keep cash at home or in a secret hiding place*, *Give to a household or family member or friend*, *Give to someone else for safe keeping* and *You don’t put cash away but you buy things* as these are not appropriate financial institutions or aids that can help.
+
+```{r}
+invalid_save_sources <- c("employer", "community group", "church", "cash at home", "family", "friend", "someone else",
+                          "buy things")
+valid_save_q <-  where_saved_qs %>% 
+                filter(!grepl(paste(invalid_save_sources, collapse = "|"), ...3)) %>%
+                select(`Variable Information`, ...3)
+```
+
+## Where do Tanzanians Borrow From?
+
+Apart from saving money, financial institutes also lend out money to Tanzanians. We can check for those as well.
+
+```{r}
+where_spend_qs <- survey_q %>%
+                  filter(grepl("borrow", `...3`))
+where_spend_qs
+```
+
+Likewise with topic above, we shall also exclude non-appropriate money sources such as *saving groups*, *Moneylender*, *Family/friends* and *Employer*. Note that we also see two different types of questions where we can see where Tanzanians say they borrow money from and where they actually borrow money from, assuming that they are truthful in answering the questions.
+
+```{r}
+invalid_sources <- c('saving groups', 'Moneylender', 'Family', 'friends', 'Employer')
+valid_spend_q <- where_spend_qs %>% 
+                filter(!grepl(paste(invalid_sources, collapse = "|"), ...3)) %>%
+                select(`Variable Information`, ...3)
+```
+
+## How do Tanzanians invest?
+
+```{r}
+where_invest_qs <- survey_q %>%
+                  filter(grepl("invest", `...3`))
+where_invest_qs
+```
+
+Seems that all investment vehicles seem legitimate, there is no need to filter the questions here.
+
+```{r}
+valid_invest_qs <- where_invest_qs %>% select(`Variable Information`, ...3)
+```
+
+## How do Tanaznians Insure?
+
+```{r}
+where_insur_qs <- survey_q %>%
+                  filter(grepl("insur", `...3`))
+where_insur_qs
+```
+
+Seems that there are many kinds of insurance here, and it seems that the questionnaire is also testing the financial literacy of the Tanzanians. We shall look into this.
+
+```{r}
+valid_insur_qs <- where_insur_qs %>% select(`Variable Information`, ...3)
+```
+
+# Part 3 : Preparation for Regression
+
+To prepare for the regression test, we will need an independent variable and dependent variables. The independent variable would be questions that would determine whether the individual is financially included or not, while the dependent variable would be the other questions that can be asked. As shown above, the above questions can be used as independent variables, while the rest of the data can be used as depending variables.
+
+## Binning the Variables
+
+Since the variables are all Yes/No or multiple choice, we need to bin them to certain digits so that the regression model can process them. We will need to use a look up table to see all the available values, then reassign the values in the questions to 0, 1 or turning them into a one-hot encoding.
+
+### Get Code to Question List
+
+```{r}
+all_question_codes <- unique(survey_a$`Variable Values`)
+
+for (person_id in seq_along(respondent_ans))
+for (i in seq_along(all_question_codes)) {
+  # Amend the answer in the question
+}
+```
+
+```{r}
+# Make them a list
+all_valid_qs_code <- c(unique(valid_save_q$`Variable Information`), 
+                       unique(valid_insur_qs$`Variable Information`),
+                       unique(valid_spend_q$`Variable Information`),
+                       unique(valid_invest_qs$`Variable Information`))
+
+valid_qs_code_to_qs <- rbind(valid_save_q, valid_insur_qs, valid_spend_q, valid_invest_qs)
+```
+
+## Finding out correlation between variables
+
+## Filter out Irrelevant Questions
+
+We can now filter out the codes where the questions are not relevant.
+
+
+
+**Note** : There are also some NAs in the question, we will presume its a no for Yes/No questions and if it is a multiple choice question, we will ignore it.
+
+# Part 4 : Preparation for Regression

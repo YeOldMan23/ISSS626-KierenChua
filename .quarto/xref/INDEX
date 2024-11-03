@@ -100,5 +100,17 @@
   },
   "InClassEx/InClassEx09/data/geospatial/ELDERCARE.qmd": {
     "ELDERCARE.html": "d79f2e29"
+  },
+  "HandsonEx/HandsonEx10/data/geospatial/MPSZ-2019.qmd": {
+    "MPSZ-2019.html": "34591d60"
+  },
+  "HandsonEx/HandsonEx10/HandsonEx10a.qmd": {
+    "HandsonEx10a.html": "0cd957c3"
+  },
+  "HandsonEx/HandsonEx10/HandsonEx10b.qmd": {
+    "HandsonEx10b.html": "11c862d5"
+  },
+  "TakeHomeEx/TakeHomeEx03/Take-home_Ex3b.qmd": {
+    "Take-home_Ex3b.html": "af8f6ab7"
   }
 }
