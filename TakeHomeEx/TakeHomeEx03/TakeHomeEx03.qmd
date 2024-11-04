@@ -57,7 +57,7 @@ We also got data from the other required decision parameters, which are :
 7.  Proximity to shopping mall
 8.  Proximity to supermarket
 9.  Numbers of kindergartens within 350m
-10.  Numbers of childcare centres within 350m
+10. Numbers of childcare centres within 350m
 11. Numbers of bus stop within 350m
 12. Numbers of primary school within 1km
 
@@ -82,7 +82,6 @@ busstop_data <- st_read(dsn = "data/BusStopLocation_Jul2024",
                         layer= "BusStop") %>% st_transform(3414)
 ```
 
-
 # Part 2 : Processing the data
 
 Now we need to add all the data to the dataframe
@@ -106,13 +105,21 @@ resale_sf <- st_as_sf(resale_tidy_clean,
 resale_sf$remaining_lease_mth[is.na(resale_sf$remaining_lease_mth)] <- 0
 ```
 
-We also need to jitter the points so that the points do not share the same coordinates
+We also need to jitter the points so that the points do not share the same coordinates, we need to jitter quite abit for the regression to work latter.
 
 ```{r}
-resale_sf$geometry <- st_jitter(resale_sf$geometry, amount = 0.1)
+resale_sf$geometry <- st_jitter(resale_sf$geometry, amount = 100)
 ```
 
-## Unit Age 
+We can now show the data
+
+```{r}
+tmap_mode("plot")
+tm_shape(resale_sf) + 
+  tm_dots()
+```
+
+## Unit Age
 
 ```{r}
 resale_sf$unit_age <- 99 - resale_sf$remaining_lease_yr
@@ -270,7 +277,7 @@ unique_flat_types <- unique(cleaned_resale_sf$flat_type)
 unique_flat_types
 ```
 
-We also want to see the types of flats that are available 
+We also want to see the types of flats that are available
 
 ```{r}
 unique_flat_models <- unique(cleaned_resale_sf$flat_model)
@@ -283,7 +290,7 @@ To have more focus on the data, we shall focus on the more expensive apartments 
 boxplot(cleaned_resale_sf$resale_price, main="Box plot of resale prices", ylab="Resale Price")
 ```
 
-We can see there are many outliers of data from the boxplot in the upper half. To maintain a large amount of data, we shall use the top 25% of data as the search space 
+We can see there are many outliers of data from the boxplot in the upper half. To maintain a large amount of data, we shall use the top 25% of data as the search space
 
 ```{r}
 sale_quantiles <- quantile(cleaned_resale_sf$resale_price)
@@ -304,7 +311,7 @@ This leaves us with over 10000 data samples, which should be enough for us.
 
 # Part 4 : Computing Correlation Matrix
 
-## Bin the data 
+## Bin the data
 
 We need to bin some of the variables so that they make integers
 
@@ -347,6 +354,9 @@ First we need to do a train test split for any model training. Split shall be 65
 ```{r}
 
 set.seed(1234)
+# First we try to remove any NA values
+cleaned_resale_sf_cut <- cleaned_resale_sf_cut[rowSums(is.na(st_drop_geometry(cleaned_resale_sf_cut))) == 0,, ]
+
 resale_split <- initial_split(cleaned_resale_sf_cut, 
                               prop = 6.5/10,)
 # We use a 80/20 split since we have more than 40000 samples of data
@@ -387,10 +397,12 @@ We can see that all the variables have a variables that is below a 5, so we can 
 ## Convert to Spatial Datframe
 
 ```{r}
+# First we check for NA values in the traindata
+
 train_data_sp <- as_Spatial(train_data)
 ```
 
-## Get adaptive bandwidth 
+## Get adaptive bandwidth
 
 ```{r}
 bw_adaptive <- bw.gwr(resale_price ~ floor_area_sqm +
@@ -462,7 +474,6 @@ test_data <- testing(resale_split)
 test_data_sp <- as_Spatial(test_data)
 ```
 
-
 ```{r}
 gwr_bw_test_adaptive <- bw.gwr(resale_price ~ floor_area_sqm +
                   storey_range_bin + remaining_lease_yr +
@@ -486,24 +497,23 @@ Now we can run prediction on the test dataset
 st_crs(train_data_sp)
 ```
 
-
 ```{r}
-gwr_pred <- gwr.predict(formula = resale_price ~ floor_area_sqm +
-                  storey_range_bin + remaining_lease_yr +
-                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
-                  PROX_MRT + PROX_PARK + PROX_MALL + 
-                  PROX_SPMK + KIND_350 +
-                  CHILD_350 + BUS_350 +
-                  PRI_1K, 
-                  data= train_data_sp, 
-                  predictdata = test_data_sp, 
-                  bw=bw_adaptive, 
-                  kernel = 'gaussian', 
-                  adaptive= TRUE, 
-                  longlat = FALSE)
+#gwr_pred <- gwr.predict(formula = resale_price ~ floor_area_sqm +
+#                  storey_range_bin + remaining_lease_yr +
+#                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+#                  PROX_MRT + PROX_PARK + PROX_MALL + 
+#                  PROX_SPMK + KIND_350 +
+#                  CHILD_350 + BUS_350 +
+#                  PRI_1K, 
+#                  data= train_data_sp, 
+#                  predictdata = test_data_sp, 
+#                  bw=bw_adaptive, 
+#                  kernel = 'gaussian', 
+#                  adaptive= TRUE, 
+#                  longlat = FALSE)
 ```
 
-# Part 6 : Generating Random Forest Model
+# Part 7 : Generating Random Forest Model
 
 Now we can move on to creating the random forest model
 
@@ -514,7 +524,7 @@ train_data_nogeom <- train_data %>%
   st_drop_geometry()
 ```
 
-After preparing the data, we can train the model below 
+After preparing the data, we can train the model below
 
 ## Basic Random Forest
 
@@ -534,6 +544,27 @@ We can view the model output below
 
 ```{r}
 rf
+```
+
+## Cleaning up the data
+
+The code now is taking up alot of space, so we nedd to clean up some of the data that we dont need for future
+
+```{r}
+rm(rf)
+rm(price_mlr)
+rm(resale_split)
+rm(gwr_adaptive)
+rm(busstop_data)
+rm(childcare_data)
+rm(cleaned_resale_no_geom)
+rm(cleaned_resale_sf)
+rm(eldercare_data)
+rm(foodcourt_data)
+rm(kindergarten_data)
+rm(mall_data)
+rm(MRT_data)
+rm(primarySchool_data)
 ```
 
 ## Geographically weighted Random Forest
@@ -583,4 +614,71 @@ gwRF_pred <- predict.grf(gwRF_adaptive,
 ```
 
 
+```{r}
+GRF_pred_df <- as.data.frame(gwRF_pred)
 
+test_data_pred <- cbind(test_data,
+                        GRF_pred_df)
+```
+
+Save the data for the future
+
+```{r}
+write_rds(test_data_pred, "data/test_results.rds")
+```
+
+```{r}
+test_data_pred <- read_rds( "data/test_results.rds")
+```
+
+## Freeing Memory
+
+The model is very large >15Gb so once we got th results, we should free up the memory
+
+```{r}
+rm(gwRF_adaptive)
+```
+
+## Viewing Random Forest Prediction Error
+
+Now we can compare the diffrence in values from predictions vs actual resale value by locaiton
+
+```{r}
+rmse(test_data_pred$resale_price, 
+     test_data_pred$gwRF_pred)
+```
+
+```{r}
+ggplot(data = test_data_pred,
+       aes(x = gwRF_pred,
+           y = resale_price)) +
+  geom_point()
+```
+
+We can see that there is a bottom out on the predictions, which is due to us cutting off the resale price limit at 600,000. 
+
+## Show residuals
+
+```{r}
+test_data_pred$residuals <- test_data_pred$gwRF_pred - test_data_pred$resale_price
+st_crs(test_data_pred)
+```
+
+```{r}
+# Load in the mpsz data
+mpsz = st_read(dsn = "data/geospatial", layer = "MP14_SUBZONE_WEB_PL") %>% st_transform(3414)
+```
+
+Plot the map
+
+```{r}
+tmap_mode("view")
+tm_shape(mpsz) +
+    tmap_options(check.and.fix = TRUE) +
+    tm_polygons(alpha = 0.4) +
+tm_shape(test_data_pred) +
+    tm_dots(col = "residuals",
+            alpha = 0.6,
+            style = "quantile")
+tmap_mode("plot")
+```
