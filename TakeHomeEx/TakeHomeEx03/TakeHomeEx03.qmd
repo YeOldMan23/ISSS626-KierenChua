@@ -84,7 +84,7 @@ busstop_data <- st_read(dsn = "data/BusStopLocation_Jul2024",
 
 # Part 2 : Processing the data
 
-Now we need to add all the data to the dataframe
+Now we need to add all the data to the dataframe. We will also jitter the geomoetries of dependent variables just in case they overlap.
 
 ## Locations of HDB
 
@@ -108,7 +108,7 @@ resale_sf$remaining_lease_mth[is.na(resale_sf$remaining_lease_mth)] <- 0
 We also need to jitter the points so that the points do not share the same coordinates, we need to jitter quite abit for the regression to work latter.
 
 ```{r}
-resale_sf$geometry <- st_jitter(resale_sf$geometry, amount = 100)
+resale_sf$geometry <- st_jitter(resale_sf$geometry, amount = 2)
 ```
 
 We can now show the data
@@ -140,7 +140,7 @@ resale_sf$PROX_CBD <- apply(distance_matrix, 1, min)
 In this case we can find the closest elder-care to the HDB unit
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, eldercare_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(eldercare_data$geometry, amount = 2))
 
 resale_sf$PROX_ELDER <- apply(distance_matrix, 1, min)
 ```
@@ -150,7 +150,7 @@ resale_sf$PROX_ELDER <- apply(distance_matrix, 1, min)
 We do the same thing here
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, foodcourt_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(st_zm(foodcourt_data$geometry), amount = 2))
 
 resale_sf$PROX_HAWKER <- apply(distance_matrix, 1, min)
 ```
@@ -158,7 +158,7 @@ resale_sf$PROX_HAWKER <- apply(distance_matrix, 1, min)
 ## Proximity to MRT
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, MRT_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(st_zm(MRT_data$geometry), amount = 2))
 
 resale_sf$PROX_MRT <- apply(distance_matrix, 1, min)
 ```
@@ -166,7 +166,7 @@ resale_sf$PROX_MRT <- apply(distance_matrix, 1, min)
 ## Proximity to Park
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, park_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(st_zm(park_data$geometry), amount = 2))
 
 resale_sf$PROX_PARK <- apply(distance_matrix, 1, min)
 ```
@@ -178,7 +178,7 @@ We need to get the center of the primary school to compare against centroid. Nee
 ```{r}
 primarySchool_data$geometry <- st_zm(primarySchool_data$geometry)
 primarySchool_data$centroid <- st_centroid(primarySchool_data$geometry)
-distance_matrix <- st_distance(resale_sf$geometry, primarySchool_data$centroid)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(primarySchool_data$centroid, amount = 2))
 
 resale_sf$PROX_PRIM <- apply(distance_matrix, 1, min)
 ```
@@ -189,7 +189,7 @@ Same for the shopping mall
 
 ```{r}
 mall_data$centroid <- st_centroid(mall_data$geometry)
-distance_matrix <- st_distance(resale_sf$geometry, mall_data$centroid)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(mall_data$centroid, amount = 2))
 
 resale_sf$PROX_MALL <- apply(distance_matrix, 1, min)
 ```
@@ -197,7 +197,7 @@ resale_sf$PROX_MALL <- apply(distance_matrix, 1, min)
 ## Proximity to Supermarket
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, supermarket_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(st_zm(supermarket_data$geometry), amount = 2))
 
 resale_sf$PROX_SPMK <- apply(distance_matrix, 1, min)
 ```
@@ -207,7 +207,7 @@ resale_sf$PROX_SPMK <- apply(distance_matrix, 1, min)
 To calculate the number of kindergartens within 350m of the HBD, we need to have a 350m search radius around each location, then count the number of kindergartens within
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, kindergarten_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(st_zm(kindergarten_data$geometry), amount = 2))
 
 count_within_350m <- apply(distance_matrix, 1, function(distances) {
   sum(distances <= 350)  # Count points within 350 meters
@@ -220,7 +220,7 @@ resale_sf$KIND_350 <- count_within_350m
 ## Number of Childcares within 350m
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, st_zm(childcare_data$geometry))
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(st_zm(childcare_data$geometry), amount = 2))
 
 count_within_350m <- apply(distance_matrix, 1, function(distances) {
   sum(distances <= 350)  # Count points within 350 meters
@@ -232,7 +232,7 @@ resale_sf$CHILD_350 <- count_within_350m
 ## Number of Bus-Stops within 350m
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, busstop_data$geometry)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(busstop_data$geometry, amount = 2))
 
 count_within_350m <- apply(distance_matrix, 1, function(distances) {
   sum(distances <= 350)  # Count points within 350 meters
@@ -244,7 +244,7 @@ resale_sf$BUS_350 <- count_within_350m
 ## Number of Primary School within 1000m
 
 ```{r}
-distance_matrix <- st_distance(resale_sf$geometry, primarySchool_data$centroid)
+distance_matrix <- st_distance(resale_sf$geometry, st_jitter(primarySchool_data$centroid, amount = 2))
 
 count_within_1km <- apply(distance_matrix, 1, function(distances) {
   sum(distances <= 1000)  # Count points within 350 meters
@@ -284,25 +284,35 @@ unique_flat_models <- unique(cleaned_resale_sf$flat_model)
 unique_flat_models
 ```
 
-To have more focus on the data, we shall focus on the more expensive apartments vs the exercise given to us. To get an idea of what is expensive, we will need to see the spread of flat prices
+To have more focus on the data, we shall focus on the more expensive flat models vs the exercise given to us. To get an idea of what is expensive, we will need to see the spread of flat prices by their specific prices. We can get the mean price of each house type 
 
 ```{r}
-boxplot(cleaned_resale_sf$resale_price, main="Box plot of resale prices", ylab="Resale Price")
+mean_prices <- cleaned_resale_sf %>%
+  group_by(flat_model) %>%
+  summarise(mean_price = mean(resale_price, na.rm = TRUE))
+print(mean_prices)
 ```
 
-We can see there are many outliers of data from the boxplot in the upper half. To maintain a large amount of data, we shall use the top 25% of data as the search space
+We can also see the mean prices by flat type
 
 ```{r}
-sale_quantiles <- quantile(cleaned_resale_sf$resale_price)
-
-sale_quantiles[4]
+mean_prices <- cleaned_resale_sf %>%
+  group_by(flat_type) %>%
+  summarise(mean_price = mean(resale_price, na.rm = TRUE))
+print(mean_prices)
 ```
 
-So the upper quantile is 629 000 dollars, we shall round that down to 600 000 and then only consider rooms above that price.
+
+Since the class exercise did the model for 2 and 3 room flat, we shall try to do a housing market that is higher in value which is the executive flats.
 
 ```{r}
-cleaned_resale_sf_cut <- cleaned_resale_sf %>% 
-                          filter(resale_price >= 6e5)
+cleaned_resale_sf_cut <- cleaned_resale_sf %>% filter(flat_type %in% c('EXECUTIVE'))
+#                          filter(flat_model %in% c('DBSS', 
+#                                                   'Maisonette', 
+#                                                   '3Gen', 
+#                                                   'Adjoined flat', 
+#                                                   'Model A-Maisonette',
+#                                                  'Apartment'))
 cleaned_resale_sf_cut_no_geom <- cleaned_resale_sf_cut %>%
                                   st_drop_geometry()
 ```
@@ -319,11 +329,32 @@ We need to bin some of the variables so that they make integers
 
 ```{r}
 unqiue_storey <- unique(cleaned_resale_sf_cut_no_geom$storey_range)
+unqiue_storey
+```
 
-storey_mapping <- setNames(seq_along(unqiue_storey), unqiue_storey)
+We need to map it by height, where a low value corresponds to a low height
 
-cleaned_resale_sf_cut_no_geom$storey_range_bin <- storey_mapping[cleaned_resale_sf_cut_no_geom$storey_range]
-cleaned_resale_sf_cut$storey_range_bin <- storey_mapping[cleaned_resale_sf_cut$storey_range]
+```{r}
+# We need to arrange the the mapping by height
+calculate_height <- function(range) {
+  # Split the range to get the lower and upper bounds
+  bounds <- as.numeric(unlist(strsplit(range, " TO ")))
+
+  avg_height <- mean(bounds)
+  return(avg_height)
+}
+
+heights <- sapply(unqiue_storey, calculate_height)
+
+# Make the mapping
+height_mapping <- setNames(sapply(unqiue_storey, calculate_height), unqiue_storey)
+```
+
+We then apply this mapping to the dataframe 
+
+```{r}
+cleaned_resale_sf_cut_no_geom$storey_range_bin <- height_mapping[cleaned_resale_sf_cut_no_geom$storey_range]
+cleaned_resale_sf_cut$storey_range_bin <- height_mapping[cleaned_resale_sf_cut$storey_range]
 ```
 
 ## Plotting the graph
@@ -341,7 +372,7 @@ corrplot::corrplot(cor(cleaned_resale_sf_cut_no_geom[, required_cols]),
                    type = "upper")
 ```
 
-We can see that lease commence date and lease remaining year has a correlation value of more than 0.8, so we can remove them from the choices
+We can see that lease commence date and remain lease yr have high correlation, so we remove lease commence date.
 
 ## Variance Inflation Factor
 
@@ -359,9 +390,18 @@ cleaned_resale_sf_cut <- cleaned_resale_sf_cut[rowSums(is.na(st_drop_geometry(cl
 
 resale_split <- initial_split(cleaned_resale_sf_cut, 
                               prop = 6.5/10,)
-# We use a 80/20 split since we have more than 40000 samples of data
+
 train_data <- training(resale_split)
 
+```
+
+We need to check for overlaps in the train data to see if there is data we need to remove.
+
+```{r}
+overlap_matrix <- st_equals(train_data$geometry)
+overlap_matrix <- sapply(overlap_matrix, function(x) length(x) > 1)
+any_overlap <- any(overlap_matrix)
+any_overlap
 ```
 
 ### Generating simple LM Model
@@ -389,8 +429,6 @@ We can also plot this out for better visualization
 plot(vif) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-
-We can see that all the variables have a variables that is below a 5, so we can use all of them.
 
 # Part 5 : Generating Geographically Weighted Predictive Models
 
@@ -465,12 +503,23 @@ gwr_adaptive <- read_rds("data/model/gwr_adaptive.rds")
 gwr_adaptive
 ```
 
-From the results we can see that proximity to elder-care, number of child-cares and number of kindergartens seem to be insignificant to the resale price of the location. This could probably signify that these metrics may not be in consideration when people are making a purchase. We can try to remove its from future training.
+From the results we can see that proximity to mall, supermarket and the numbers of bus stops, kindergartens and childcares within 350m all have a p-value more than 5%.
 
 ## Computer Test Data Adaptive Bandwidth
 
 ```{r}
 test_data <- testing(resale_split)
+```
+
+We also need to check for overlap in the test data
+```{r}
+overlap_matrix <- st_equals(test_data$geometry)
+overlap_matrix <- sapply(overlap_matrix, function(x) length(x) > 1)
+any_overlap <- any(overlap_matrix)
+any_overlap
+```
+
+```{r}
 test_data_sp <- as_Spatial(test_data)
 ```
 
@@ -498,20 +547,73 @@ st_crs(train_data_sp)
 ```
 
 ```{r}
-#gwr_pred <- gwr.predict(formula = resale_price ~ floor_area_sqm +
-#                  storey_range_bin + remaining_lease_yr +
-#                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
-#                  PROX_MRT + PROX_PARK + PROX_MALL + 
-#                  PROX_SPMK + KIND_350 +
-#                  CHILD_350 + BUS_350 +
-#                  PRI_1K, 
-#                  data= train_data_sp, 
-#                  predictdata = test_data_sp, 
-#                  bw=bw_adaptive, 
-#                  kernel = 'gaussian', 
-#                  adaptive= TRUE, 
-#                  longlat = FALSE)
+gwr_pred <- gwr.predict(formula = resale_price ~ floor_area_sqm +
+                  storey_range_bin + remaining_lease_yr +
+                  PROX_CBD + PROX_ELDER + PROX_HAWKER +
+                  PROX_MRT + PROX_PARK + PROX_MALL + 
+                  PROX_SPMK + KIND_350 +
+                  CHILD_350 + BUS_350 +
+                  PRI_1K, 
+                  data= train_data_sp, 
+                  predictdata = test_data_sp, 
+                  bw=bw_adaptive, 
+                  kernel = 'gaussian', 
+                  adaptive= TRUE, 
+                  longlat = FALSE)
 ```
+
+## Finding the Errors and Plotting Residuals 
+
+### RMSE
+
+Now we want to see how effective is our model by computing the residuals
+
+```{r}
+Gwr_pred_df <- as.data.frame(gwr_pred$SDF)
+
+test_data_gwr_pred <- cbind(test_data,
+                        Gwr_pred_df)
+```
+
+First we can compare the RMSE.
+
+```{r}
+rmse(test_data_gwr_pred$resale_price, 
+     test_data_gwr_pred$prediction)
+```
+
+```{r}
+ggplot(data = test_data_gwr_pred,
+       aes(x = prediction,
+           y = resale_price)) +
+  geom_point()
+```
+### Plot Residuals
+
+We can also plot this out on the map to see the residuals by location
+
+```{r}
+test_data_gwr_pred$residuals <- test_data_gwr_pred$prediction - test_data_gwr_pred$resale_price
+st_crs(test_data_gwr_pred)
+```
+
+```{r}
+mpsz = st_read(dsn = "data/geospatial", layer = "MP14_SUBZONE_WEB_PL") %>% st_transform(3414)
+```
+
+```{r}
+tmap_mode("view")
+tm_shape(mpsz) +
+    tmap_options(check.and.fix = TRUE) +
+    tm_polygons(alpha = 0.4) +
+tm_shape(test_data_gwr_pred) +
+    tm_dots(col = "residuals",
+            alpha = 0.6,
+            style = "quantile")
+tmap_mode("plot")
+```
+
+
 
 # Part 7 : Generating Random Forest Model
 
@@ -641,7 +743,7 @@ rm(gwRF_adaptive)
 
 ## Viewing Random Forest Prediction Error
 
-Now we can compare the diffrence in values from predictions vs actual resale value by locaiton
+Now we can compare the difference in values from predictions vs actual resale value by location
 
 ```{r}
 rmse(test_data_pred$resale_price, 
@@ -655,7 +757,6 @@ ggplot(data = test_data_pred,
   geom_point()
 ```
 
-We can see that there is a bottom out on the predictions, which is due to us cutting off the resale price limit at 600,000. 
 
 ## Show residuals
 
