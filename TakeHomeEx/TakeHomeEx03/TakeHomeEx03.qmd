@@ -307,17 +307,16 @@ Since the class exercise did the model for 2 and 3 room flat, we shall try to do
 
 ```{r}
 cleaned_resale_sf_cut <- cleaned_resale_sf %>% filter(flat_type %in% c('EXECUTIVE'))
-#                          filter(flat_model %in% c('DBSS', 
-#                                                   'Maisonette', 
-#                                                   '3Gen', 
-#                                                   'Adjoined flat', 
-#                                                   'Model A-Maisonette',
-#                                                  'Apartment'))
+
 cleaned_resale_sf_cut_no_geom <- cleaned_resale_sf_cut %>%
                                   st_drop_geometry()
 ```
 
-This leaves us with over 10000 data samples, which should be enough for us.
+This leaves us with over 1000 data samples, which should be significant enough for us.
+
+```{r}
+print(nrow(cleaned_resale_sf_cut))
+```
 
 # Part 4 : Computing Correlation Matrix
 
@@ -503,7 +502,9 @@ gwr_adaptive <- read_rds("data/model/gwr_adaptive.rds")
 gwr_adaptive
 ```
 
-From the results we can see that proximity to mall, supermarket and the numbers of bus stops, kindergartens and childcares within 350m all have a p-value more than 5%.
+From the results we can see that proximity to eldercare, hawker centers, park, mall and the numbers of  kindergartens and childcares within 350m and primary schools within 1km all have a p-value more than 5%.
+
+**Note** : This is expected since these are higher value properties that are usually owned by affluent individuals who probably have no dependents, have barely any free time to relax and probably have their own mode of transport, hence the lack of statistical significance for aforementioned variables with exception to MRT stations which has been linked to property value. Cannot acertain this statistic since both income and family data for individuals living in these apartments is not available to us.
 
 ## Computer Test Data Adaptive Bandwidth
 
